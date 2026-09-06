@@ -22,7 +22,7 @@
 |---|---|---|
 | `src/finance.py` | 编排器：import / check / report / close / reopen（后续新增 split-huabei、sync-fair-value、reconcile） | ✅ |
 | `config/` | deg 规则（alipay.yaml、wechat.yaml，待补银行）、科目表草案 | ✅ |
-| `docs/` | 权威总纲 `研究报告_v3_定稿.md`（含组合原理附录）+ `research/` 调研档案 | ✅ |
+| `docs/` | 治理化文档：`STATUS.md`（当前状态唯一权威）+ `decisions/` 决策 + `contracts/` 文件契约 + `reports/` 审查报告 + `archive/` 调研档案（规则见 `AGENTS.md`） | ✅ |
 | `journals/` | **账本（唯一真相）** | ❌（独立私库 `PersonalCFO-ledger`） |
 | `raw/` | 原始账单暂存（敏感） | ❌ |
 | `reports/` | 财报输出（含 demo2026 演示包） | ❌ |
@@ -49,7 +49,7 @@ python src/finance.py reopen 2026 Q1
 ## 实施
 
 详见根目录 **`任务计划.md`**（分阶段、每阶段验收标准、命令速查、风险清单）。
-权威决策见 `docs/研究报告_v3_定稿.md`。
+当前状态见 `docs/STATUS.md`；权威决策见 `docs/decisions/01_架构总纲_v3定稿.md`；AI 工作规则见 `AGENTS.md`。
 
 ## 仓库
 
