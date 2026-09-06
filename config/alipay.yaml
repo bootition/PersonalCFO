@@ -1,0 +1,102 @@
+# 支付宝账单 → hledger journal 规则（初版，基于 2025-08~2026-07 真实账单统计迭代）
+#
+# 使用：
+#   double-entry-generator.exe translate -p alipay -t ledger --config config/alipay.yaml <账单csv> -o journals/import-alipay.journal
+#
+# 规则按顺序匹配；method/category/peer/item 均为"包含"匹配（fullMatch 为精确）。
+# 同一笔命中多条规则时，后命中的 methodAccount/targetAccount 覆盖前面的。
+# 组合支付方式（如 "余额宝&花呗"）暂由排序决定归属，见 README 的已知限制。
+
+defaultMinusAccount: Assets:FIXME
+defaultPlusAccount: Expenses:FIXME
+defaultCurrency: CNY
+title: MRQ个人账本
+
+alipay:
+  rules:
+    # ── 支付方式（资金来源/去向）──
+    # 账户余额 / 余额 → 支付宝现金
+    - method: 账户余额
+      fullMatch: true
+      methodAccount: Assets:现金:支付宝
+    - method: 余额
+      fullMatch: true
+      methodAccount: Assets:现金:支付宝
+    # 余额宝 → 现金等价物（货币基金）
+    - method: 余额宝
+      methodAccount: Assets:现金:余额宝
+    # 银行卡 → 对应银行科目
+    - method: 建设银行储蓄卡
+      methodAccount: Assets:银行存款:建设银行
+    - method: 工商银行储蓄卡
+      methodAccount: Assets:银行存款:工商银行
+    - method: 招商银行储蓄卡
+      methodAccount: Assets:银行存款:招商银行
+    - method: 光大银行储蓄卡
+      methodAccount: Assets:银行存款:光大银行
+    # 花呗放最后：组合支付（余额宝&花呗、花呗&红包）整笔先记花呗负债，再人工拆分
+    - method: 花呗
+      methodAccount: Liabilities:花呗
+
+    # ── 收入 ──
+    - type: 收入
+      category: 收入
+      targetAccount: Income:其他收入
+    - type: 收入
+      targetAccount: Income:其他收入
+
+    # ── 支出分类（大额/高频优先）──
+    - category: 交通出行
+      targetAccount: Expenses:出行交通
+    - category: 餐饮美食
+      targetAccount: Expenses:日常三餐
+    - category: 日用百货
+      targetAccount: Expenses:日常娱乐
+    - category: 教育培训
+      targetAccount: Expenses:书籍学习
+    - category: 医疗健康
+      targetAccount: Expenses:医疗健康
+    - category: 充值缴费
+      targetAccount: Expenses:日常缴费
+    - category: 酒店旅游
+      targetAccount: Expenses:旅游
+    - category: 亲友代付
+      targetAccount: Expenses:副业成本
+    - category: 文化休闲
+      targetAccount: Expenses:日常娱乐
+    - category: 生活服务
+      targetAccount: Expenses:日常缴费
+    - category: 商业服务
+      targetAccount: Expenses:其他
+    - category: 数码电器
+      targetAccount: Expenses:书籍学习
+    - category: 保险
+      targetAccount: Expenses:日常缴费
+
+    # ── 投资理财（余额宝/基金买卖、利息等）──
+    # 余额宝收益类先记"其他收入"占位，再按 item 细分
+    - category: 投资理财
+      item: 收益发放
+      targetAccount: Income:利息收入
+    - category: 投资理财
+      targetAccount: Assets:投资:基金
+
+    # ── 资金流（不计收支）──
+    - type: 不计收支
+      item: 余额宝-单次转入
+      targetAccount: Assets:现金:余额宝
+    - type: 不计收支
+      item: 余额宝-单次转出
+      targetAccount: Assets:现金:支付宝
+    - type: 不计收支
+      targetAccount: Assets:FIXME
+
+    # ── 转账红包 / 亲友代付：收入方向归其他收入；支出方向保持 FIXME 人工定性 ──
+    - type: 收入
+      category: 转账红包
+      targetAccount: Income:其他收入
+    - category: 转账红包
+      targetAccount: Assets:FIXME
+
+    # ── 兜底 ──
+    - targetAccount: Expenses:FIXME

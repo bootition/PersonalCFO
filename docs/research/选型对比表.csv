@@ -1,0 +1,25 @@
+候选,仓库,stars,语言,license,最近push,复式记账,资产负债表,利润表,现金流量表,权益变动,结账反结账,支付宝微信导入,季度累计口径,PDF导出,CSV导出,本地单机,适配成本,综合评级,结论
+hledger+deg+ffh,https://github.com/plaintextaccounting/hledger + https://github.com/deb-sig/double-entry-generator + https://github.com/adept/full-fledged-hledger,4696/716/573,Haskell/Go/Haskell,GPL-3.0/Apache-2.0/BSD-3,2026-09-06/2026-08-04/2026-04-10,引擎级,✅,✅,✅(简表),⚠️(需壳层汇总),✅ close--retain+快照,✅ deg原生,✅ --quarterly--cumulative,✅ html→Edge PDF,✅,✅ 纯文件,低(只写胶水),★★★★★,推荐
+beancount+fava+deg,https://github.com/beancount/beancount + https://github.com/beancount/fava,5973/2564,Python,GPL-2.0/MIT,2026-08-23/2026-09-05,引擎级,✅,✅,❌,❌,❌ 需自写,✅ deg原生,⚠️ 需自拼,⚠️ 页面打印,⚠️,✅ 纯文件,中,★★★★,备选
+Beancount-Trans,https://github.com/dhr2333/Beancount-Trans,77,TypeScript,MIT,2026-08-29,✅,✅(fava),✅(fava),❌,❌,❌,✅ 含BERT自动分类,❌,❌,❌,⚠️ Docker+PG+Redis+Celery+BERT,中(可抄解析映射代码),★★★★,抄素材/备选
+django-ledger,https://github.com/arrobalytics/django-ledger,1379,Python,GPL-3.0,2026-09-03,引擎级,✅,✅,✅,⚠️,✅ closing entries,❌ 需自写,⚠️ 需自拼,⚠️,⚠️,✅ Django/SQLite,高(重写Web应用),★★★☆,备选引擎
+GnuCash,https://github.com/Gnucash/gnucash,4338,C,GPL-2.0+,2026-09-05,✅ 完整,✅,✅,✅,✅,⚠️ 年度结账,❌ CSV手动,✅ 报告期可选,⚠️ 打印导出,✅,✅ 桌面应用,中(导入自动化弱),★★★☆,不推荐主用
+Firefly III,https://github.com/firefly-iii/firefly-iii,24510,PHP,AGPL-3.0,2026-09-06,⚠️ 伪双记,❌,❌,❌,❌,❌,⚠️ CSV importer,❌,❌,✅,✅,低但能力不达标,★★,不选
+Akaunting,https://github.com/akaunting/akaunting,10109,PHP,NOASSERTION,2026-09-04,✅,❌(核心无),✅ P&L,⚠️ Widget,❌,❌,❌,❌,⚠️,✅,✅ PHP,高且偏企业,★★,不选
+Actual Budget,https://github.com/actualbudget/actual,28577,TypeScript,MIT,2026-09-05,❌ 预算信封,❌,❌,❌,❌,❌,❌,❌,❌,✅,✅,_,不适用,不选
+ldgr,https://github.com/kafkade/ldgr,0,Rust,Apache-2.0,2026-08-31,✅ hledger兼容,✅,✅,❌,❌,❌,⚠️ CSV profiles,⚠️,✅ 自带PDF,⚠️,✅ Rust,中(太新),★★☆,观察
+full-fledged-hledger,https://github.com/adept/full-fledged-hledger,573,Haskell,BSD-3,2026-04-10,✅ 借用hledger,✅,✅,✅,⚠️,✅ 工作流,✅ CSV rules,✅,⚠️ 脚本,✅,✅,低(模式借鉴),★★★★★,纳入方案A
+hledger-flow,https://github.com/apauley/hledger-flow,219,Haskell,GPL-3.0,2026-07-15,✅ 借用hledger,✅,✅,✅,⚠️,⚠️,✅ 原始账单驱动,✅,⚠️,✅,✅,低(模式借鉴),★★★★,纳入方案A
+EzBookkeeping,https://github.com/mayswind/ezbookkeeping,5533,Go,MIT,2026-09-05,❌ 单式,❌,❌,❌,❌,❌,⚠️ 手动导入,❌,❌,✅,✅,低但能力不达标,★★,不选
+Wealthfolio,https://github.com/wealthfolio/wealthfolio,8807,Rust,AGPL-3.0,2026-09-06,❌ 非复式(组合/净值),❌,❌,❌,❌,❌,❌ 无支付宝微信预设(通用CSV映射),❌,✅(app自身/无CSV财报),✅ 数据导出CSV/JSON,✅ 本地SQLite,低(引入为投资仪表盘),★★★★☆,引入:投资仪表盘层
+Ghostfolio,https://github.com/ghostfolio/ghostfolio,9247,TypeScript,AGPL-3.0,2026-09-06,❌,❌,❌,❌,❌,❌,⚠️ 活动CSV/经纪商,❌,⚠️,✅,✅ Docker自托管,低(替代Wealthfolio备选),★★★★,备选:自托管组合仪表盘
+Portfolio Performance,https://github.com/portfolio-performance/portfolio,4060,Java,EPL-1.0,2026-09-03,❌ 组合会计,❌,❌,❌,❌,❌,❌,⚠️ 高级绩效/回撤,✅,⚠️,✅ 桌面,低(备选),★★★★,备选:极致绩效分析
+Paisa,https://github.com/ananthakumaran/paisa,3206,Go/TypeScript,AGPL-3.0,2026-09-03? ,❌ 无自身引擎(ledger/hledger/beancount后端),❌,❌,❌,❌,❌,✅ CSV/Excel/PDF导入模板,❌,✅ UI,✅,✅ 本地Web,低(1行bug需修),★★★★☆,引入:日常Web UI层
+fava_investor,https://github.com/redstreet/fava_investor,182,Python,GPL-3.0,2026-01-21,✅ 基于beancount,⚠️ 配置分析,❌,❌,❌,❌,❌,⚠️ 资产配置/税损,❌,✅,✅,低(抄素材),★★★☆,抄素材(beancount线)
+ledger-obsidian,https://github.com/tgrosinger/ledger-obsidian,558,TypeScript,GPL-3.0,2024-07-06,✅ PTA,⚠️,⚠️,⚠️,❌,❌,❌,❌,❌,✅ Obsidian UI,✅,低(二期),★★★☆,二期:Obsidian集成参考
+balance-budget,https://github.com/balance-budget/balance-budget,4,C#,AGPL-3.0,2026-09-05,✅ 双记+科目树+inbox,⚠️ 净值/资金流报告,⚠️,⚠️,❌,❌,⚠️ 银行CSV/PDF导入,❌,❌,✅,✅ SQLite/Postgres,高(太新),★★★,抄inbox工作流参考
+Beancount-Trans,https://github.com/dhr2333/Beancount-Trans,77,TypeScript,MIT,2026-08-29,✅,✅(fava),✅(fava),❌,❌,❌,✅ 含BERT本地分类,❌,❌,❌,⚠️ Docker+PG+Redis+Celery+BERT,中(抄解析映射),★★★★,抄素材:解析/映射/BERT预分类
+Sossoldi,https://github.com/RIP-Comm/sossoldi,1391,Dart,MIT,2026-08-24,❌ 净值追踪,❌,❌,❌,❌,❌,⚠️,❌,❌,✅,✅,低,★★,不选(与Wealthfolio重复)
+Picsou,https://github.com/Zoeille/picsou-finance,505,Java,NOASSERTION,2026-09-04,❌ 仪表盘,❌,❌,❌,❌,❌,⚠️,❌,❌,✅,✅,低,★★,不选
+Finanze,https://github.com/finanze/finanze,51,TypeScript,AGPL-3.0,2026-09-05,❌ 净值追踪,❌,❌,❌,❌,❌,⚠️,❌,❌,✅,✅,低,★★,不选
+Actual Budget,https://github.com/actualbudget/actual,28577,TypeScript,MIT,2026-09-05,❌ 信封预算,❌,❌,❌,❌,❌,❌,❌,❌,✅,✅,低,★★★★(预算专用),二期预算备选

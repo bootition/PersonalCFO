@@ -1,0 +1,32 @@
+# ── 隐私与生成物（永不入库） ──
+journals/
+raw/
+reports/
+close/
+*.bak
+
+# ── 外部工具与底座（本地保留，另行管理） ──
+tools/
+vendor/
+reference/
+archive/
+venv/
+paisa_test/
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# ── Node（Paisa 构建产物） ──
+node_modules/
+dist/
+
+# ── 系统/编辑器 ──
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ── 本地敏感信息（绝不入库） ──
+docs/本地敏感信息_DO_NOT_COMMIT.md
