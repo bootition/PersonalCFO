@@ -28,5 +28,10 @@ Thumbs.db
 .vscode/
 .idea/
 
-# ── 本地敏感信息（绝不入库） ──
+# ── 本地敏感信息与机密配置（绝不入库） ──
 docs/本地敏感信息_DO_NOT_COMMIT.md
+config/local.yaml
+
+# ── AI 会话产物与机器证据（仅本地） ──
+.planning/
+docs/evidence/

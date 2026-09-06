@@ -1,3 +1,10 @@
+---
+title: 研究报告 · 第二阶段补全（Wealthfolio 与需求补全）
+status: superseded
+superseded_by: docs/decisions/01_架构总纲_v3定稿.md
+last_reviewed: 2026-09-06
+---
+
 # 研究报告 · 第二阶段补全：Wealthfolio 深潜 + 需求补全 + 修订架构
 
 - 日期：2026-09-06
