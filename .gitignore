@@ -34,6 +34,8 @@ docs/本地敏感信息_DO_NOT_COMMIT.md
 config/local.yaml
 config/actual_balances.yaml
 docs/本地待办_DO_NOT_COMMIT.md
+config/opening_balances.yaml
+config/recurring_rules.yaml
 
 # ── AI 会话产物与机器证据（仅本地） ──
 .planning/
