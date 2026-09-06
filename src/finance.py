@@ -366,7 +366,10 @@ def forecast(months: int = 12):
                     if any(k == e or k.startswith(e + ":") for e in ESSENTIAL_EXPENSES))
     essential_monthly = essential / span_months
     total_monthly = sum(exp.values()) / span_months
-    coverage = (cash_total / essential_monthly) if essential_monthly > 0 else float("inf")
+    if essential_monthly > 0:
+        coverage_txt = f"{cash_total / essential_monthly:.1f} 个月"
+    else:
+        coverage_txt = "N/A（账本中无必要支出记录，无法计算）"
 
     lines = [
         "══ 现金流预测与应急金指标 ══",
@@ -375,7 +378,7 @@ def forecast(months: int = 12):
         f"  " + "  ".join(f"{a.split(':')[-1]}={v:,.0f}" for a, v in sorted(cash.items()) if abs(v) > 0.005),
         f"月均必要支出（{ '/'.join(e.split(':')[-1] for e in ESSENTIAL_EXPENSES) }）: {essential_monthly:,.2f}",
         f"月均总支出: {total_monthly:,.2f}",
-        f"★ 应急金覆盖月数（现金/月均必要支出）: {coverage:.1f} 个月",
+        f"★ 应急金覆盖月数（现金/月均必要支出）: {coverage_txt}",
         "  ⚠️ 注：期初建账（P1.5）前余额为净流量口径（可能为负），指标仅作流程演示；建账后即为真实值。",
         "",
         f"── 未来 {months} 个月预测（hledger --forecast；依赖 `~ monthly` 定期规则，P1.6 金额待用户）──",
