@@ -237,6 +237,9 @@ def import_bills():
             print("\n".join(txt.splitlines()[:9]))
             if sp.returncode != 0:
                 sys.exit(f"split_huabei 失败：{sp.stderr.decode('utf-8', errors='replace')[:400]}")
+            # 拆后终态冒烟（拆分会新增补录分录，FIXME 以拆后为准）
+            report, _ = smoke_report(platform, out, None)
+            print(f"── 拆后终态 {report.splitlines()[1]}\n   {report.splitlines()[-2]}\n   {report.splitlines()[-1]}")
     # 汇总平衡校验（hledger check 全部 journal）
     check()
     print("导入完成；FIXME 队列见：tools/hledger-bin/hledger.exe -f journals/import-*.journal register FIXME")
@@ -324,6 +327,139 @@ def reopen(year: int, period: str):
         print("没有该期的结账分录")
 
 
+# ═══════════════ P4.1 现金流预测 + 应急金覆盖月数 ═══════════════
+
+CASH_ACCOUNTS = ["Assets:现金", "Assets:银行存款"]      # 应急金口径：现金及等价物+活期
+ESSENTIAL_EXPENSES = ["Expenses:日常三餐", "Expenses:出行交通", "Expenses:日常缴费",
+                      "Expenses:医疗健康", "Expenses:房租摊销"]  # 必要支出口径（可随用户调整）
+
+
+def _balance_map(account_root):
+    """hledger balance <root> --flat -O csv → {科目: 金额}"""
+    out = hledger(*journal_args(), "balance", account_root, "--flat", "-O", "csv")
+    res = {}
+    for row in csv.reader(out.splitlines()):
+        if len(row) == 2 and row[0].startswith(account_root + ":"):
+            amt = row[1].replace("CNY", "").replace(",", "").strip()
+            try:
+                res[row[0]] = float(amt or 0)
+            except ValueError:
+                pass
+    return res
+
+
+def forecast(months: int = 12):
+    """现金流预测报表 + 应急金覆盖月数（F6/P4.1）。"""
+    cash = {a: v for root in CASH_ACCOUNTS for a, v in _balance_map(root).items()}
+    cash_total = sum(cash.values())
+    # 支出月均值：用利润表区间口径（取账本覆盖月数）
+    first = hledger(*journal_args(), "print", "-O", "csv").splitlines()
+    dates = sorted(r[1] for r in csv.reader(first)
+                   if len(r) > 1 and r[1][:4].isdigit() and int(r[1][:4]) >= 2000)
+    span_months = 1
+    if dates:
+        y1, m1 = int(dates[0][:4]), int(dates[0][5:7])
+        y2, m2 = int(dates[-1][:4]), int(dates[-1][5:7])
+        span_months = max(1, (y2 - y1) * 12 + (m2 - m1) + 1)
+    exp = {a: v for a, v in _balance_map("Expenses").items()}
+    essential = sum(v for k, v in exp.items()
+                    if any(k == e or k.startswith(e + ":") for e in ESSENTIAL_EXPENSES))
+    essential_monthly = essential / span_months
+    total_monthly = sum(exp.values()) / span_months
+    coverage = (cash_total / essential_monthly) if essential_monthly > 0 else float("inf")
+
+    lines = [
+        "══ 现金流预测与应急金指标 ══",
+        f"账本覆盖: {span_months} 个月",
+        f"现金及等价物余额: {cash_total:,.2f}",
+        f"  " + "  ".join(f"{a.split(':')[-1]}={v:,.0f}" for a, v in sorted(cash.items()) if abs(v) > 0.005),
+        f"月均必要支出（{ '/'.join(e.split(':')[-1] for e in ESSENTIAL_EXPENSES) }）: {essential_monthly:,.2f}",
+        f"月均总支出: {total_monthly:,.2f}",
+        f"★ 应急金覆盖月数（现金/月均必要支出）: {coverage:.1f} 个月",
+        "  ⚠️ 注：期初建账（P1.5）前余额为净流量口径（可能为负），指标仅作流程演示；建账后即为真实值。",
+        "",
+        f"── 未来 {months} 个月预测（hledger --forecast；依赖 `~ monthly` 定期规则，P1.6 金额待用户）──",
+    ]
+    fc = hledger(*journal_args(), "balance", *CASH_ACCOUNTS,
+                 "--forecast", f"today..+{months}months", "--flat")
+    lines.append(fc if fc.strip() else "（当前无定期规则，预测=现状平推；P1.6 落地后自动生效）")
+    REPORTS_DIR.mkdir(exist_ok=True)
+    out = REPORTS_DIR / f"forecast-{date.today().isoformat()}.txt"
+    out.write_text("\n".join(lines), encoding="utf-8")
+    print("\n".join(lines[:9]))
+    print(f"完整: {out}")
+
+
+# ═══════════════ P4.2 月度账实核对 ═══════════════
+
+ACTUAL_FILE = CONFIG_DIR / "actual_balances.yaml"
+ACTUAL_TEMPLATE = """# 账实核对：每月手动盘点真实余额后填写（本文件被 .gitignore 排除，仅本地）
+# 格式： 科目全名: 实际余额（负债记负数）。没填的科目跳过核对。
+# Assets:现金:支付宝: 0.00
+# Assets:现金:余额宝: 0.00
+# Assets:现金:微信: 0.00
+# Assets:现金:零钱通: 0.00
+# Assets:银行存款:建设银行: 0.00
+# Liabilities:花呗: -0.00
+"""
+
+
+def reconcile(write: bool = False):
+    """账面余额 vs 手动实录 → 差异清单 → （--write）调账分录到 journals/reconcile-<date>.journal。"""
+    if not ACTUAL_FILE.exists():
+        ACTUAL_FILE.write_text(ACTUAL_TEMPLATE, encoding="utf-8")
+        print(f"已生成盘点模板 {ACTUAL_FILE}（仅本地，不入库）\n请按真实余额填写后重跑 reconcile")
+        return
+    actual = {}
+    for line in ACTUAL_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or ":" not in line:
+            continue
+        acct, _, amt = line.rpartition(":")
+        amt = amt.strip().replace(",", "")
+        if amt:
+            try:
+                actual[acct.strip()] = float(amt)
+            except ValueError:
+                print(f"[跳过] 无法解析金额: {line}")
+    if not actual:
+        print(f"{ACTUAL_FILE} 没有有效盘点行（全部注释/空），请先填写真实余额")
+        return
+    book = {}
+    for root in ("Assets", "Liabilities"):
+        book.update(_balance_map(root))
+    diffs, entries = [], []
+    stamp = date.today().isoformat()
+    print(f"{'科目':<30}{'账面':>14}{'实盘':>14}{'差异':>12}")
+    for acct, av in sorted(actual.items()):
+        bv = book.get(acct, 0.0)
+        d = round(av - bv, 2)
+        mark = "  ⚠️" if abs(d) >= 0.01 else ""
+        print(f"{acct:<30}{bv:>14,.2f}{av:>14,.2f}{d:>+12,.2f}{mark}")
+        if abs(d) >= 0.01:
+            diffs.append((acct, d))
+            if d > 0:
+                entries += [f"\n{stamp} * 账实核对调账（{acct} 实盘多于账面）",
+                            f"    {acct}    {d:.2f} CNY",
+                            f"    Equity:期初调整    -{d:.2f} CNY"]
+            else:
+                entries += [f"\n{stamp} * 账实核对调账（{acct} 实盘少于账面）",
+                            f"    Equity:期初调整    {abs(d):.2f} CNY",
+                            f"    {acct}    {d:.2f} CNY"]
+    if not diffs:
+        print("账实一致 ✅，无需调账")
+        return
+    print(f"\n差异 {len(diffs)} 项" + ("；调账分录已写入，请 check" if write else "（--write 生成分录）"))
+    if write:
+        out = JOURNALS_DIR / f"reconcile-{stamp}.journal"
+        if out.exists():
+            sys.exit(f"{out.name} 已存在，拒绝覆盖（同日重复核对请先删除旧文件）")
+        out.write_text("; 账实核对调账（reconcile 生成）\n" + "\n".join(entries) + "\n",
+                       encoding="utf-8")
+        print(f"已写入 {out.name}")
+        check()
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -332,6 +468,8 @@ def main():
     p = sub.add_parser("report"); p.add_argument("year", type=int)
     p = sub.add_parser("close"); p.add_argument("year", type=int); p.add_argument("period")
     p = sub.add_parser("reopen"); p.add_argument("year", type=int); p.add_argument("period")
+    p = sub.add_parser("forecast"); p.add_argument("--months", type=int, default=12)
+    p = sub.add_parser("reconcile"); p.add_argument("--write", action="store_true")
     args = ap.parse_args()
     if args.cmd == "check":
         check()
@@ -343,6 +481,10 @@ def main():
         close(args.year, args.period)
     elif args.cmd == "reopen":
         reopen(args.year, args.period)
+    elif args.cmd == "forecast":
+        forecast(args.months)
+    elif args.cmd == "reconcile":
+        reconcile(args.write)
 
 
 if __name__ == "__main__":
