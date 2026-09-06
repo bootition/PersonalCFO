@@ -79,3 +79,4 @@ cd journals && git add -A && git commit -m "monthly: YYYY-MM 导入+对账" && c
 | deg 吞行疑虑 | 看冒烟"行数归因"，未解释≠0 即上报排查（献祭行机制见 STATUS 缺口 4） |
 | 花呗匹配率 <95% | 看 reports/huabei-split-*.txt 的 FIXME 明细，多为代付/退款孤儿，人工定性 |
 | paisa update FATAL | 确认 `paisa_test/paisa.yaml` 路径正斜杠、hledger 在 PATH；构建问题见任务计划红线 2 |
+| paisa 端口被占/页面不更新 | Git Bash 的 `pkill` 杀不了 Windows 进程：用 `taskkill //IM paisa.exe //F` 再重启；Edge 截图/浏览器看到的可能是旧进程 |
