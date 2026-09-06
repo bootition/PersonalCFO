@@ -12,11 +12,15 @@
 设计原则：账本是纯文本（UTF-8），本脚本只是"胶水"，不实现任何会计引擎。
 """
 import argparse
+import csv
 import shutil
 import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from journal_stats import smoke_report  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 JOURNALS_DIR = ROOT / "journals"
@@ -81,29 +85,161 @@ def check():
     print("check OK —", out or "账本平衡")
 
 
+def _iter_alipay_rows(bill: Path):
+    header = False
+    with open(bill, encoding="gbk", errors="replace") as f:
+        for row in csv.reader(f):
+            if not row:
+                continue
+            if row[0].strip() == "交易时间":
+                header = True
+                continue
+            if header and row[0] and not row[0].startswith("-"):
+                yield row
+
+
+def _iter_wechat_rows(bill: Path):
+    import openpyxl
+    wb = openpyxl.load_workbook(bill, read_only=True)
+    rows = list(wb.active.iter_rows(values_only=True))
+    hi = next(i for i, r in enumerate(rows) if r and str(r[0]).strip() == "交易时间")
+    header = [str(c).strip() for c in rows[hi]]
+    ix = {n: i for i, n in enumerate(header)}
+    for r in rows[hi + 1:]:
+        if r and r[0]:
+            yield {n: (str(r[i]).strip() if i < len(r) and r[i] is not None else "")
+                   for n, i in ix.items()}
+
+
+def count_source_rows(platform, bill: Path):
+    """数源账单数据行（冒烟比对用）。无法解析时返回 None。"""
+    try:
+        if platform == "alipay":
+            return sum(1 for _ in _iter_alipay_rows(bill))
+        if platform == "wechat":
+            return sum(1 for _ in _iter_wechat_rows(bill))
+    except Exception as e:  # noqa: BLE001
+        print(f"   [警告] 源行数解析失败：{e}")
+    return None
+
+
+def attribute_drops(platform, bill: Path, journal_path: Path, deg_stderr: str):
+    """精确行数归因：源 orderId 集合 − journal orderId 集合 = 被剔行，按状态分项。
+    返回报告文本；无法解析时返回 None。"""
+    import re
+    try:
+        if platform == "alipay":
+            src = [(r[9].strip().strip("\t"), r[8].strip())
+                   for r in _iter_alipay_rows(bill) if len(r) > 9]
+        elif platform == "wechat":
+            src = [(r.get("交易单号", ""), r.get("当前状态", "") + "|" + r.get("交易类型", ""))
+                   for r in _iter_wechat_rows(bill)]
+        else:
+            return None
+        jtext = journal_path.read_text(encoding="utf-8")
+        jids = set(re.findall(r'; orderId: "([^"]+)"', jtext))
+        dropped = [(oid, st) for oid, st in src if oid and oid not in jids]
+        from collections import Counter
+        by_status = Counter(st for _, st in dropped)
+        # 退款配对中的原单（deg 日志 "Refund for [orderId X]" 的 X）
+        refund_originals = set(re.findall(r"Refund for \[orderId ([^\]]+)\]", deg_stderr))
+        n_originals = sum(1 for oid, st in dropped if oid in refund_originals)
+        unexplained = [(oid, st) for oid, st in dropped
+                       if oid not in refund_originals
+                       and "关闭" not in st and "撤销" not in st
+                       and "退款" not in st]
+        parts = [f"剔除 {len(dropped)} 行："]
+        for st, n in by_status.most_common():
+            tag = "（退款配对原单）" if st in ("交易成功", "支付成功") and n == n_originals and n > 0 else ""
+            parts.append(f"  {st} ×{n}{tag}")
+        parts.append(f"未解释 {len(unexplained)} 行" +
+                     ("  ✅" if not unexplained else f"  ⚠️ {unexplained[:3]}"))
+        return "\n".join(parts)
+    except Exception as e:  # noqa: BLE001
+        return f"   [警告] 归因分析失败：{e}"
+
+
+# deg v2.15.1 会静默吞掉支付宝 CSV 表头后第一行数据（红队 R1 探针实证）。
+# 对策：表头后插入一行"献祭"占位行（状态=交易关闭，即使未被吞也会被 L0 规则丢弃）。
+DUMMY_ROW = ("1970-01-01 00:00:00,其他,占位,/,deg首行吞行占位(献祭行),支出,0.01,"
+             "余额,交易关闭,,,\n")
+
+
+def preprocess_alipay(bill: Path) -> Path:
+    """生成插入献祭行的临时 CSV，返回临时文件路径。"""
+    tmp = bill.with_name(f".deg-tmp-{bill.name}")
+    text = bill.read_text(encoding="gbk", errors="replace")
+    lines = text.splitlines(keepends=True)
+    hi = next(i for i, l in enumerate(lines) if l.startswith("交易时间"))
+    lines.insert(hi + 1, DUMMY_ROW)
+    tmp.write_text("".join(lines), encoding="gbk", errors="replace")
+    return tmp
+
+
+# 各平台导入任务：pattern 匹配 raw/ 下账单；deg_extra 为该 provider 的额外参数
+IMPORT_JOBS = [
+    ("alipay", "支付宝交易明细*.csv", "config/alipay.yaml", []),
+    ("wechat", "微信支付账单流水文件*.xlsx", "config/wechat.yaml",
+     ["--ignore-invalid-tx-types"]),  # 理财通赎回等 deg 未收录类型靠规则原文匹配
+]
+
+
 def import_bills():
-    """把 raw/ 下的支付宝 CSV / 微信 XLSX 翻译成 journals/import-*.journal。"""
-    jobs = [
-        ("alipay", "支付宝交易明细*.csv", "config/alipay.yaml"),
-        ("wechat", "微信支付账单流水文件*.xlsx", "config/wechat.yaml"),
-    ]
-    for platform, pattern, cfg in jobs:
+    """raw/ 下的支付宝 CSV / 微信 XLSX → deg → journals/import-*.journal，逐平台冒烟。"""
+    any_import = False
+    alipay_outputs = []
+    for platform, pattern, cfg, deg_extra in IMPORT_JOBS:
         bills = sorted(RAW_DIR.glob(pattern))
         if not bills:
             print(f"[跳过] raw/ 下没有 {platform} 账单（{pattern}）")
             continue
         for bill in bills:
+            any_import = True
             out_file = JOURNALS_DIR / f"import-{platform}-{bill.stem}.journal"
+            src_rows = count_source_rows(platform, bill)
+            tmp = preprocess_alipay(bill) if platform == "alipay" else bill
             subprocess.run(["chcp.com", "65001"], stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, check=False)
             res = subprocess.run(
                 [str(DEG), "translate", "-p", platform, "-t", "ledger",
-                 "--config", str(ROOT / cfg), str(bill), "-o", str(out_file)],
+                 "--config", str(ROOT / cfg), *deg_extra,
+                 str(tmp), "-o", str(out_file)],
                 capture_output=True)
+            if tmp != bill:
+                tmp.unlink(missing_ok=True)
             if res.returncode != 0:
                 sys.exit(f"deg 导入失败：{res.stderr.decode('utf-8', errors='replace')[:400]}")
-            print(f"已导入 {bill.name} -> {out_file.name}")
-    print("导入完成；请检查 journals/import-*.journal 中 Assets:FIXME/Expenses:FIXME 并补全规则")
+            err = res.stderr.decode("utf-8", errors="replace")
+            pairs = err.count("Refund for")
+            unprocessed = err.count("unprocessed")
+            print(f"已导入 {bill.name} -> {out_file.name}"
+                  f"（deg 日志：退款配对 {pairs} 次；保留但提示 {unprocessed} 条；"
+                  f"献祭行{'已被吞(R1对策生效)' if platform == 'alipay' and '吞行占位' not in out_file.read_text(encoding='utf-8') else '留存检查'}）")
+            report, s = smoke_report(platform, out_file, src_rows)
+            print(report)
+            attr = attribute_drops(platform, bill, out_file, err)
+            if attr:
+                print(f"   行数归因: 源 {src_rows} 行 → journal {s['txs']} 笔；{attr}")
+            if platform == "alipay":
+                alipay_outputs.append(out_file)
+    if not any_import:
+        print("raw/ 下没有可导入账单")
+        return
+    # 花呗拆分：有 PDF + 本地密码配置才执行（契约 C3/C6）
+    if alipay_outputs and (CONFIG_DIR / "local.yaml").exists() \
+            and list(RAW_DIR.glob("*花呗*.pdf")):
+        for out in alipay_outputs:
+            print(f"── 花呗拆分 {out.name}")
+            sp = subprocess.run(
+                [sys.executable, str(ROOT / "src" / "split_huabei.py"), str(out)],
+                capture_output=True)
+            txt = sp.stdout.decode("utf-8", errors="replace")
+            print("\n".join(txt.splitlines()[:9]))
+            if sp.returncode != 0:
+                sys.exit(f"split_huabei 失败：{sp.stderr.decode('utf-8', errors='replace')[:400]}")
+    # 汇总平衡校验（hledger check 全部 journal）
+    check()
+    print("导入完成；FIXME 队列见：tools/hledger-bin/hledger.exe -f journals/import-*.journal register FIXME")
 
 
 def gen_statement(kind: str, start: str, end: str) -> str:

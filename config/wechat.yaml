@@ -1,7 +1,16 @@
-# 微信账单 → hledger journal 规则（初版，基于真实账单统计迭代）
+# 微信账单 → hledger journal 规则
 #
 # 使用：
 #   double-entry-generator.exe translate -p wechat -t ledger --config config/wechat.yaml <账单xlsx|csv> -o journals/import-wechat.journal
+#
+# deg wechat 语义（2026-09-06 读源码 pkg/analyser/wechat/wechat.go，与 alipay 一致）：
+#   规则顺序评估、后命中覆盖先命中（同侧）；targetAccount：支出/不计 → 借方、收入 → 贷方来源；
+#   methodAccount：支出/不计 → 贷方、收入 → 借方；支持 status/ignore。
+#   注意：wechat 无"交易分类"字段，用 txType（交易类型）+ peer（交易对方）+ item（商品）。
+#   退款：微信账单中退款是独立的 收入 行（交易类型="XX-退款"），deg 不自动配对——
+#   故 L0 直接丢弃全部退款行 + 已全额退款原单（净额归零）；部分退款原单（状态 已退款¥X）
+#   保留全额入账，差额计入月度对账人工调整（见 STATUS 缺口）。
+# 分层：L0 丢弃 → L1 宽 type → L2 txType 宽 → L3 具体 → L5 权威支付方式 → L6 方向矫正
 
 defaultMinusAccount: Assets:FIXME
 defaultPlusAccount: Expenses:FIXME
@@ -11,7 +20,94 @@ title: MRQ个人账本
 
 wechat:
   rules:
-    # ── 支付方式 ──
+    # ══ L0 丢弃 ══
+    - status: 已全额退款
+      ignore: true
+    - txType: 退款
+      ignore: true
+
+    # ══ L1 宽 type ══
+    - type: 收入
+      targetAccount: Income:其他收入
+
+    # ══ L2 txType 宽规则 ══
+    - txType: 商户消费
+      targetAccount: Expenses:FIXME
+    - txType: 转账
+      targetAccount: Assets:FIXME
+    - txType: 扫二维码付款
+      targetAccount: Assets:FIXME
+
+    # ══ L3 具体规则 ══
+    # 资金流（收/支="/"，方向由 txType 决定；资金来源侧由 L5 method 给）
+    - txType: 转入零钱通
+      targetAccount: Assets:现金:零钱通
+    - txType: 零钱通转出
+      targetAccount: Assets:现金:微信
+    - txType: 零钱充值
+      targetAccount: Assets:现金:微信
+    # 零钱提现：deg 将此类强制为收入方向（parse.go L50），L5 银行卡→借方（入账方），
+    # 本条给贷方来源=零钱——不要放到 L6
+    - txType: 零钱提现
+      targetAccount: Assets:现金:微信
+    - txType: 购买理财通
+      targetAccount: Assets:投资:基金
+    # 转账/红包收入：钱到零钱，补全借方科目（对方定性仍 FIXME 走 L2）
+    - txType: 转账
+      type: 收入
+      methodAccount: Assets:现金:微信
+    - txType: 微信红包
+      targetAccount: Income:其他收入
+      methodAccount: Assets:现金:微信
+    # 商户（peer 包含匹配）
+    - peer: 美团
+      targetAccount: Expenses:日常三餐
+    - item: 美团骑行
+      targetAccount: Expenses:出行交通
+    - peer: 孔夫子旧书网
+      targetAccount: Expenses:书籍学习
+    - peer: 京东
+      targetAccount: Expenses:日常三餐   # 沿用上项目裁决：京东微信订单归三餐
+    - peer: 拼多多
+      targetAccount: Expenses:衣物用品   # 拼多多账单无商品信息，默认日用（待用户复核）
+    - peer: 淘宝平台
+      targetAccount: Expenses:衣物用品
+    - peer: 起点中文网
+      targetAccount: Expenses:日常娱乐
+    - peer: 同程旅行
+      targetAccount: Expenses:出行交通
+    - peer: 滴滴出行
+      targetAccount: Expenses:出行交通
+    - peer: 要打印
+      targetAccount: Expenses:书籍学习
+    - peer: 腾讯计算机
+      targetAccount: Expenses:日常娱乐   # 微信豆等
+    - peer: 深度求索
+      targetAccount: Expenses:书籍学习   # DeepSeek API
+    - peer: 火山引擎
+      targetAccount: Expenses:副业成本
+    - peer: 海口市公安局
+      targetAccount: Expenses:日常缴费
+    - peer: 颐和园
+      targetAccount: Expenses:日常娱乐
+    - peer: 圆明园
+      targetAccount: Expenses:日常娱乐
+    - peer: 电子票务
+      targetAccount: Expenses:日常娱乐
+    - peer: 蜜雪冰城
+      targetAccount: Expenses:日常三餐
+    - peer: 益禾堂
+      targetAccount: Expenses:日常三餐
+    - peer: 长河餐饮
+      targetAccount: Expenses:日常三餐
+    - peer: 上海宽娱
+      targetAccount: Expenses:日常娱乐   # B站充电
+    - peer: 中国电信
+      targetAccount: Expenses:日常缴费
+    - peer: 中国移动
+      targetAccount: Expenses:日常缴费
+
+    # ══ L5 权威支付方式 ══
     - method: 零钱
       fullMatch: true
       methodAccount: Assets:现金:微信
@@ -19,53 +115,21 @@ wechat:
       methodAccount: Assets:现金:零钱通
     - method: 建设银行储蓄卡
       methodAccount: Assets:银行存款:建设银行
+    - method: 工商银行储蓄卡
+      methodAccount: Assets:银行存款:工商银行
     - method: 招商银行储蓄卡
       methodAccount: Assets:银行存款:招商银行
     - method: 光大银行储蓄卡
       methodAccount: Assets:银行存款:光大银行
-    - method: 工商银行储蓄卡
-      methodAccount: Assets:银行存款:工商银行
 
-    # ── 资金流（零钱通/提现/充值）──
-    - txType: 转入零钱通
-      targetAccount: Assets:现金:零钱通
-    - txType: 零钱通转出
-      targetAccount: Assets:现金:微信
-    - txType: 零钱提现
-      targetAccount: Assets:银行存款:建设银行
-    - txType: 零钱充值
-      targetAccount: Assets:现金:微信
-    - txType: 购买理财通
-      targetAccount: Assets:投资:基金
+    # ══ L6 方向矫正（账单"支付方式"是到账方的行；零钱提现不在此列，见 L3 注释）══
+    # 理财通赎回 = 基金→零钱/零钱通（"/"方向：target→借方到账、methodAccount→贷方来源）
     - txType: 理财通赎回
+      method: 零钱
+      fullMatch: true
+      targetAccount: Assets:现金:微信
+      methodAccount: Assets:投资:基金
+    - txType: 理财通赎回
+      method: 零钱通
       targetAccount: Assets:现金:零钱通
-
-    # ── 收入 ──
-    - type: 收入
-      txType: 微信红包
-      targetAccount: Income:其他收入
-    - type: 收入
-      targetAccount: Income:其他收入
-
-    # ── 支出分类（按交易对方/商品细化）──
-    - peer: 美团平台商户
-      targetAccount: Expenses:日常三餐
-    - peer: 拼多多平台商户
-      targetAccount: Expenses:日常娱乐
-    - peer: 京东
-      targetAccount: Expenses:日常娱乐
-    - peer: 孔夫子旧书网
-      targetAccount: Expenses:书籍学习
-    - peer: 地铁
-      targetAccount: Expenses:出行交通
-    - peer: 公交
-      targetAccount: Expenses:出行交通
-    - txType: 商户消费
-      targetAccount: Expenses:FIXME
-
-    # ── 转账 / 退款：人际转账保持 FIXME 人工定性；退款由 deg 自动反向匹配 ──
-    - txType: 转账
-      targetAccount: Assets:FIXME
-
-    # ── 兜底 ──
-    - targetAccount: Expenses:FIXME
+      methodAccount: Assets:投资:基金

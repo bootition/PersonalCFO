@@ -1,17 +1,17 @@
-# ── 隐私与生成物（永不入库） ──
-journals/
-raw/
-reports/
-close/
+# ── 隐私与生成物（永不入库；仅根目录，勿误伤 docs/ 下同名目录） ──
+/journals/
+/raw/
+/reports/
+/close/
 *.bak
 
-# ── 外部工具与底座（本地保留，另行管理） ──
-tools/
-vendor/
-reference/
-archive/
-venv/
-paisa_test/
+# ── 外部工具与底座（本地保留，另行管理；仅根目录） ──
+/tools/
+/vendor/
+/reference/
+/archive/
+/venv/
+/paisa_test/
 
 # ── Python ──
 __pycache__/
