@@ -135,7 +135,7 @@ class Tx:
     postings: list = field(default_factory=list)  # [行号, account, amount]
     matched: bool = False
 
-_TX_HEAD = re.compile(r"^(\d{4})/(\d{2})/(\d{2}) ")
+_TX_HEAD = re.compile(r"^(\d{4})[/\-](\d{2})[/\-](\d{2}) ")
 _META = re.compile(r'^\s*; (\w+): "?(.*?)"?$')
 _POSTING = re.compile(r"^(\s+)(\S[^;]*?)(\s+)(-?\s?[\d,]+(?:\.\d+)?)\s*(CNY.*)$")
 
@@ -378,14 +378,16 @@ def match_all(pdf_rows, txs, coverage_end: date):
     res.unmatched_tx = [t for t in hb_txs if not t.matched]
 
     # ── 负数行：自动还款 / 退款还款 ──
+    # 匹配池限定"还款"类借方花呗分录（防同额退款幻影核对）；容差 ±0.1（花呗金尾差）+ 同日±1
     repay_txs = [t for t in txs
-                 if any(acc == "Liabilities:花呗" and a > 0 for _, acc, a in t.postings)]
+                 if "还款" in t.head
+                 and any(acc == "Liabilities:花呗" and a > 0 for _, acc, a in t.postings)]
     for r in negatives:
         if "自动还款" in r.name or "主动还款" in r.name:
-            # 容差 ±1 元：账单金额可能不含花呗金/红包零头（如 970.04 vs PDF 970.06）
             hit = next((t for t in repay_txs
-                        if any(abs(a - abs(r.amount)) < 1.0 for _, acc, a in t.postings
-                               if acc == "Liabilities:花呗")), None)
+                        if abs((t.day - r.day).days) <= 1
+                        and any(abs(a - abs(r.amount)) < 0.1 for _, acc, a in t.postings
+                                if acc == "Liabilities:花呗")), None)
             if hit:
                 res.repay_verify += 1
             else:
@@ -442,13 +444,13 @@ def render_additions(res: SplitResult):
         out.append("")
         out.append("; ══ split_huabei 补录分录 ══")
     for r in res.repay_create:
-        out.append(f"{r.day.isoformat()} * 花呗 - {r.name}（split_huabei 补录，还款来源待人工指定）")
+        out.append(f"{r.day.strftime('%Y/%m/%d')} * 花呗 - {r.name}（split_huabei 补录，还款来源待人工指定）")
         out.append(render_posting("Liabilities:花呗", abs(r.amount)))
         out.append(render_posting("Assets:FIXME", -abs(r.amount)))
         out.append("")
     for r, src in res.refund_reverse:
         plus_acct = next((acc for _, acc, a in src.postings if a > 0), "Expenses:FIXME")
-        out.append(f"{r.day.isoformat()} * 花呗 - {r.name}（split_huabei 退款冲销）")
+        out.append(f"{r.day.strftime('%Y/%m/%d')} * 花呗 - {r.name}（split_huabei 退款冲销）")
         out.append(render_posting("Liabilities:花呗", abs(r.amount)))
         out.append(render_posting(plus_acct, -abs(r.amount)))
         out.append("")
@@ -470,6 +472,12 @@ def main():
         if not pdfs:
             sys.exit("raw/ 下找不到花呗 PDF；可用 --pdf 指定")
         pdf = pdfs[-1]
+
+    # 幂等护栏：已拆分的 journal 拒绝二次拆分（重复插入组合对方会失衡；须先重新 import）
+    jtext = args.journal.read_text(encoding="utf-8")
+    if "huabei-split:" in jtext or "split_huabei 补录分录" in jtext:
+        sys.exit(f"拒绝执行：{args.journal.name} 已含拆分标记（huabei-split）。"
+                 "重复拆分会导致组合对方分录重复。请先重新运行 finance.py import 再拆分。")
 
     password = read_pdf_password()
     pdf_rows = aggregate_installments(parse_pdf(pdf, password))

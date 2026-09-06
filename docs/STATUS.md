@@ -30,9 +30,9 @@ last_reviewed: 2026-09-06
 |---|---|---|
 | P0 仓库与环境 | ✅ 完成（2026-09-06） | 随 P1 首份报告追溯复核 |
 | P1 会计核心上线 | 🔄 进行中 | 待出 |
-| P2 Wealthfolio 接入 | ⏳ | — |
-| P3 Paisa Fork | ⏳ | — |
-| P4 打磨 | ⏳ | — |
+| P2 Wealthfolio 接入 | 🔄 2.3 sync_fair_value.py 完成（字段断言+合成测试）；2.1/2.2 待用户安装录入 | — |
+| P3 Paisa Fork | 🔄 3.1 构建跑通（npm/go build + 真实 journal 4614 postings 入库）；另修复 CREATE_NO_WINDOW 编码 bug（比已知 1 行 bug 更大）；3.2-3.5 待做 | — |
+| P4 打磨 | 🔄 4.1 forecast（含应急金覆盖月数）+4.2 reconcile（模板/差异/调账分录）+4.3 月度 SOP 完成；4.4 待观察期 | — |
 | P1.4 银行全自动导入 | ⏸ 暂缓（用户决定，先半追踪模式） | — |
 | 账本私仓 PersonalCFO-ledger | ⏸ 暂缓（本地 git 先用） | — |
 
@@ -47,6 +47,9 @@ last_reviewed: 2026-09-06
 7. Paisa Fork 补丁已改未构建（需先 npm 构建 web 资产）。
 8. 银行卡明细未导出，银行卡处于半追踪模式。
 9. 花呗拆分残余未匹配 6（PDF 侧）+17（账单侧）笔：多为 0.01-0.8 元亲情卡/代付簇与疑似退款孤儿，清单在本地 reports/huabei-split-*.txt；退款待人工 4 笔。
+10. `paisa_test/all.journal` 为手工维护的 include 合并文件（放 journals/ 会双计），新增 import-*.journal 后须手动加 include（已写入 SOP 第 4 步）。
+11. forecast 应急金覆盖月数在期初建账（P1.5）前为净流量口径（可能为负），仅作流程演示。
+12. Paisa 无 UI 语言 i18n 机制（localization.md 仅数字格式），中文化需直改 Svelte 字符串（P3.2 按 80/20 范围执行）。
 
 ## 进行中的工作
 
