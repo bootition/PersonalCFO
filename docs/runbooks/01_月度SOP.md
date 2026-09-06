@@ -85,3 +85,5 @@ cd journals && git add -A && git commit -m "monthly: YYYY-MM 导入+对账" && c
 | 花呗匹配率 <95% | 看 reports/huabei-split-*.txt 的 FIXME 明细，多为代付/退款孤儿，人工定性 |
 | paisa update FATAL | 确认 `paisa_test/paisa.yaml` 路径正斜杠、hledger 在 PATH；构建问题见任务计划红线 2 |
 | paisa 端口被占/页面不更新 | Git Bash 的 `pkill` 杀不了 Windows 进程：用 `taskkill //IM paisa.exe //F` 再重启；Edge 截图/浏览器看到的可能是旧进程 |
+| paisa.exe 异常虚胖（>60MB） | Node 24 在**中文路径**下 `fs.rmSync` 静默失效 → 陈旧 chunk 累积进 embed；已用 cmd rmdir 双清（prebuild）。重建前也可手动 `cmd /c "rmdir /s /q web\static & rmdir /s /q .svelte-kit\output"` |
+| hledger 读 UTF-8 journal 报 hGetContents | 控制台代码页不是 65001（hledger 文件编码跟随控制台代码页）；一律经 finance.py（自动 chcp）；paisa 侧已修 CREATE_NO_WINDOW+GHC_CHARENC 双保险 |
