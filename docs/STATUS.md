@@ -64,6 +64,8 @@ last_reviewed: 2026-09-06
 | `docs/decisions/01_架构总纲_v3定稿.md` | 架构与全部决策（approved） | 变更架构先改此文档 |
 | `docs/contracts/01_文件契约.md` | journal/YAML/CSV/PDF 咬合点格式契约 | 实测为准，改动需同步 |
 | `config/科目表草案.md` | 科目表与期初建账模板 | 随真实建账迭代 |
+| `docs/runbooks/01_月度SOP.md` | 月度记账 30 分钟闭环流程 | 流程变更时更新 |
+| `docs/runbooks/02_用户决策清单.md` | 需人工参与事项（数据/定性）汇总 | 事项清完后核销 |
 | `AGENTS.md`（根目录） | AI 工作规则：文档引用、红队审查、Git 纪律、隐私红线 | 强制 |
 
 ## 维护规则（写文档的人必须遵守）
