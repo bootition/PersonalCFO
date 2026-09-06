@@ -138,8 +138,17 @@ def main():
         if out.exists():
             sys.exit(f"{out.name} 已存在，拒绝覆盖（防重复回写；请先核对删除旧文件）")
         out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        # 写后自动校验，失败回滚（红队 RT4-P2-3：毒 journal 不留存）
+        import subprocess as _sp
+        files = sorted(JOURNALS_DIR.glob("*.journal"))
+        res = _sp.run([str(ROOT / "tools" / "hledger-bin" / "hledger.exe"),
+                       *[a for f in files for a in ("-f", str(f))], "check"],
+                      capture_output=True)
+        if res.returncode != 0:
+            out.unlink()
+            sys.exit(f"调整分录校验失败，已回滚删除 {out.name}："
+                     f"{res.stderr.decode('utf-8', errors='replace')[:300]}")
         print(f"已写入 {out.name}")
-        # 写后自动校验（防毒 journal 流出）
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from finance import check  # noqa: E402
         check()

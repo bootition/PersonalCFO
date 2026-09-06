@@ -448,10 +448,17 @@ def forecast(months: int = 12):
         f"── 未来 {months} 个月预测（hledger --forecast；依赖 `~ monthly` 定期规则，P1.6 金额待用户）──",
     ]
     # 注意：--forecast 的 period 参数不约束报表窗口（实测会越界生成），
-    # 正确用法 = 裸 --forecast + -b/-e 显式报表窗口
-    fc = hledger(*journal_args(), "balance", *CASH_ACCOUNTS,
-                 "--forecast", "-b", "today", "-e", f"+{months}months", "--flat")
-    lines.append(fc if fc.strip() else "（当前无定期规则，预测=现状平推；P1.6 落地后自动生效）")
+    # 正确用法 = 裸 --forecast + -b/-e 显式报表窗口。
+    # 无 `~` 定期规则时直接给说明（红队 RT4F-3：空表+0 无信息量且易误读）
+    has_rules = any("~ " in Path(f).read_text(encoding="utf-8", errors="replace")
+                    for f in journal_files())
+    if not has_rules:
+        lines.append("（当前账本无任何 `~ monthly` 定期规则，预测=现状平推；"
+                     "P1.6 填 config/recurring_rules.yaml 并运行 gen_recurring 后自动生效）")
+    else:
+        fc = hledger(*journal_args(), "balance", *CASH_ACCOUNTS,
+                     "--forecast", "-b", "today", "-e", f"+{months}months", "--flat")
+        lines.append(fc if fc.strip() else "（窗口内无预测流量）")
     REPORTS_DIR.mkdir(exist_ok=True)
     out = REPORTS_DIR / f"forecast-{date.today().isoformat()}.txt"
     out.write_text("\n".join(lines), encoding="utf-8")
@@ -489,17 +496,24 @@ def reconcile(write: bool = False):
         amt = amt.strip().replace(",", "")
         if amt:
             try:
-                actual[acct.strip()] = float(amt)
+                v = float(amt)
+                import math
+                if not math.isfinite(v):  # 红队 RT4-P2-3：inf/nan 会写毒 journal/假"账实一致"
+                    print(f"[跳过] 非法金额（inf/nan）: {line}")
+                    continue
+                actual[acct.strip()] = v
             except ValueError:
                 print(f"[跳过] 无法解析金额: {line}")
     if not actual:
         print(f"{ACTUAL_FILE} 没有有效盘点行（全部注释/空），请先填写真实余额")
         return
-    # 科目白名单校验：错字/未知科目静默按账面 0 会凭空生成分录（红队 RT4-P1-1）
-    known = set(hledger(*journal_args(), "accounts").split())
+    # 科目白名单校验：错字/未知科目静默按账面 0 会凭空生成分录（红队 RT4-P1-1）。
+    # 限定 Assets:/Liabilities: 前缀（账面只查这两类；RT4F-1）+ splitlines 保含空格科目（RT4F-2）
+    known = {a for a in hledger(*journal_args(), "accounts").splitlines()
+             if a.startswith(("Assets:", "Liabilities:"))}
     unknown = [a for a in actual if a not in known]
     for a in unknown:
-        print(f"[警告] 未知科目（账本中不存在），已跳过：{a}")
+        print(f"[警告] 未知或非资产/负债类科目，已跳过：{a}")
         actual.pop(a)
     if not actual:
         print("没有可核对的已知科目")
@@ -536,6 +550,12 @@ def reconcile(write: bool = False):
         sys.exit(f"{out.name} 已存在，拒绝覆盖（同日重复核对请先删除旧文件）")
     out.write_text("; 账实核对调账（reconcile 生成）\n" + "\n".join(entries) + "\n",
                    encoding="utf-8")
+    # 写后校验，失败回滚（红队 RT4-P2-3：毒 journal 不留存）
+    res = subprocess.run([str(HL), *journal_args(), "check"], capture_output=True)
+    if res.returncode != 0:
+        out.unlink()
+        sys.exit(f"调账分录校验失败，已回滚删除 {out.name}："
+                 f"{res.stderr.decode('utf-8', errors='replace')[:300]}")
     print(f"已写入 {out.name}")
     check()
 

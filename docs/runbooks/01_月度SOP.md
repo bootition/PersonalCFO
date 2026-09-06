@@ -68,7 +68,7 @@ cd journals && git add -A && git commit -m "monthly: YYYY-MM 导入+对账" && c
 
 ## 6. 季末加做（约 10 分钟）
 
-- [ ] Wealthfolio 导出 holdings CSV → `raw/`，执行 `venv/Scripts/python src/sync_fair_value.py raw/<holdings>.csv --date <季末日> --write`（F5；注意脚本警告：账户缺失/空市值会先确认再写）
+- [ ] Wealthfolio 导出 holdings CSV → `raw/`，执行 `venv/Scripts/python src/sync_fair_value.py raw/<holdings>.csv --date <季末日> --write`（F5；脚本对账户缺失/空市值只打印警告不拦截，**务必先看警告人工确认 CSV 完整后再 --write**）
 - [ ] `venv/Scripts/python src/finance.py report <年>` 生成四期五表 PDF/CSV（F6）
 - [ ] `venv/Scripts/python src/finance.py forecast` 看应急金覆盖月数
 - [ ] `venv/Scripts/python src/finance.py close <年> <Q1|H1|Q3|AN>` 结账（快照+留存收益结转）
