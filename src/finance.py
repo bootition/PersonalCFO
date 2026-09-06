@@ -252,6 +252,64 @@ def gen_statement(kind: str, start: str, end: str) -> str:
     return hledger(*journal_args(), cmd, "-b", start, "-e", end)
 
 
+def _sum_at(account_root: str, end: str) -> float:
+    """某时点（-e end）account_root 下全部叶子余额合计（Income 为负值）。"""
+    out = hledger(*journal_args(), "balance", account_root,
+                  "-e", end, "--flat", "-O", "csv")
+    total = 0.0
+    for row in csv.reader(out.splitlines()):
+        if len(row) == 2 and row[0].startswith(account_root + ":"):
+            amt = row[1].replace("CNY", "").replace(",", "").strip()
+            if amt:
+                total += float(amt)
+    return total
+
+
+def _equity_detail(start: str, end: str):
+    """区间 Equity 各科目变动明细（期末-期初）。"""
+    det = {}
+    for root_end, tag in ((start, "open"), (end, "close")):
+        out = hledger(*journal_args(), "balance", "Equity",
+                      "-e", root_end, "--flat", "-O", "csv")
+        for row in csv.reader(out.splitlines()):
+            if len(row) == 2 and row[0].startswith("Equity:"):
+                amt = row[1].replace("CNY", "").replace(",", "").strip()
+                det.setdefault(row[0], {"open": 0.0, "close": 0.0})
+                det[row[0]][tag] = float(amt) if amt else 0.0
+    return {a: round(v["close"] - v["open"], 2) for a, v in det.items()
+            if abs(v["close"] - v["open"]) > 0.004}
+
+
+def equity_change_table(year: int, end: str):
+    """权益变动表（五件套之五）：期初(含留存) + 本期净利润 + 其他权益变动 = 期末(含留存)。
+    恒等式自校验。返回 (txt, csv, html)。"""
+    start = f"{year}-01-01"
+    # 含留存权益 = Equity + Income + Expenses 时点余额（Income 为负、Expense 为正）
+    def retained(t):
+        return _sum_at("Equity", t) + _sum_at("Income", t) + _sum_at("Expenses", t)
+    a = round(retained(start), 2)
+    d = round(retained(end), 2)
+    b = round((_sum_at("Income", end) + _sum_at("Expenses", end))
+              - (_sum_at("Income", start) + _sum_at("Expenses", start)), 2)
+    detail = _equity_detail(start, end)
+    c = round(sum(detail.values()), 2)
+    check = round(d - (a + b + c), 2)
+
+    rows = [("期初权益（含留存收益）", a),
+            ("加：本期净利润", b)]
+    for acct, v in sorted(detail.items()):
+        rows.append((f"加：其他权益变动 · {acct}", v))
+    rows += [("其他权益变动小计", c),
+             ("期末权益（含留存收益）", d),
+             ("校验：期末-(期初+净利润+其他变动)", check)]
+    txt = "权益变动表（累计口径）\n" + "\n".join(f"  {n:<38}{v:>16,.2f}" for n, v in rows)
+    csv_lines = ["item,amount"] + [f'"{n}",{v:.2f}' for n, v in rows]
+    html = ('<table border="1" cellspacing="0"><thead><tr><th>项目</th><th>金额</th></tr></thead><tbody>'
+            + "".join(f"<tr><td>{n}</td><td style='text-align:right'>{v:,.2f}</td></tr>"
+                      for n, v in rows) + "</tbody></table>")
+    return txt, "\n".join(csv_lines), html
+
+
 def report(year: int):
     out_dir = REPORTS_DIR / str(year)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -276,6 +334,12 @@ def report(year: int):
                           "-b", f"{year}-01-01", "-e", end, "-O", "csv")
             (out_dir / f"{period}_{fname}.csv").write_text(csv, encoding="utf-8")
             html_parts.append(f"<h2>{titles[period]} · {fname}</h2>\n{html}")
+        # 第五表：权益变动表（自算，hledger 无现成命令）
+        ec_txt, ec_csv, ec_html = equity_change_table(year, end)
+        (out_dir / f"{period}_5_权益变动表.txt").write_text(ec_txt, encoding="utf-8")
+        (out_dir / f"{period}_5_权益变动表.csv").write_text(ec_csv, encoding="utf-8")
+        (out_dir / f"{period}_5_权益变动表.html").write_text(ec_html, encoding="utf-8")
+        html_parts.append(f"<h2>{titles[period]} · 5_权益变动表</h2>\n{ec_html}")
         # 汇总单页 + PDF
         combined = f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <title>{year}{titles[period]}</title><style>body{{font-family:'Microsoft YaHei',sans-serif;margin:2em}}
@@ -416,7 +480,8 @@ def reconcile(write: bool = False):
         print(f"已生成盘点模板 {ACTUAL_FILE}（仅本地，不入库）\n请按真实余额填写后重跑 reconcile")
         return
     actual = {}
-    for line in ACTUAL_FILE.read_text(encoding="utf-8").splitlines():
+    # utf-8-sig：防记事本保存的 BOM 污染首行科目名（红队 RT4-P1-2）
+    for line in ACTUAL_FILE.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or ":" not in line:
             continue
@@ -429,6 +494,15 @@ def reconcile(write: bool = False):
                 print(f"[跳过] 无法解析金额: {line}")
     if not actual:
         print(f"{ACTUAL_FILE} 没有有效盘点行（全部注释/空），请先填写真实余额")
+        return
+    # 科目白名单校验：错字/未知科目静默按账面 0 会凭空生成分录（红队 RT4-P1-1）
+    known = set(hledger(*journal_args(), "accounts").split())
+    unknown = [a for a in actual if a not in known]
+    for a in unknown:
+        print(f"[警告] 未知科目（账本中不存在），已跳过：{a}")
+        actual.pop(a)
+    if not actual:
+        print("没有可核对的已知科目")
         return
     book = {}
     for root in ("Assets", "Liabilities"):
@@ -454,15 +528,16 @@ def reconcile(write: bool = False):
     if not diffs:
         print("账实一致 ✅，无需调账")
         return
-    print(f"\n差异 {len(diffs)} 项" + ("；调账分录已写入，请 check" if write else "（--write 生成分录）"))
-    if write:
-        out = JOURNALS_DIR / f"reconcile-{stamp}.journal"
-        if out.exists():
-            sys.exit(f"{out.name} 已存在，拒绝覆盖（同日重复核对请先删除旧文件）")
-        out.write_text("; 账实核对调账（reconcile 生成）\n" + "\n".join(entries) + "\n",
-                       encoding="utf-8")
-        print(f"已写入 {out.name}")
-        check()
+    if not write:
+        print(f"\n差异 {len(diffs)} 项（--write 生成分录）")
+        return
+    out = JOURNALS_DIR / f"reconcile-{stamp}.journal"
+    if out.exists():
+        sys.exit(f"{out.name} 已存在，拒绝覆盖（同日重复核对请先删除旧文件）")
+    out.write_text("; 账实核对调账（reconcile 生成）\n" + "\n".join(entries) + "\n",
+                   encoding="utf-8")
+    print(f"已写入 {out.name}")
+    check()
 
 
 def main():

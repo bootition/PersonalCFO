@@ -41,6 +41,8 @@ FV_ACCOUNT = "Income:投资损益:公允价值"
 
 
 def read_holdings(path: Path):
+    if not path.exists():
+        sys.exit(f"holdings 文件不存在: {path}")
     with open(path, encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         missing = [c for c in REQUIRED_FIELDS if c not in (reader.fieldnames or [])]
@@ -48,15 +50,28 @@ def read_holdings(path: Path):
             sys.exit(f"holdings CSV 字段不符契约 C4，缺少: {missing}；实际字段: {reader.fieldnames}"
                      "（断言失败即停止，不猜字段名）")
         rows = list(reader)
-    out = {}
-    for r in rows:
+    out, seen, warnings = {}, set(), []
+    for i, r in enumerate(rows, 2):
         acct = r["account_name"].strip()
         target = ACCOUNT_MAP.get(acct)
         if target is None:
             print(f"[警告] 未映射的 Wealthfolio 账户 {acct!r}，已跳过（请在 ACCOUNT_MAP 配置）")
             continue
-        mv = float(r["market_value"].replace(",", "") or 0)
+        raw = (r["market_value"] or "").strip()
+        if raw == "":
+            warnings.append(f"第 {i} 行 {acct}/{r['symbol_name']} market_value 为空（按 0 计入）")
+        try:
+            mv = float(raw.replace(",", "") or 0)
+        except ValueError:
+            sys.exit(f"第 {i} 行 market_value 无法解析: {raw!r}")
+        seen.add(target)
         out[target] = out.get(target, 0.0) + mv
+    # 红队 RT4-P1-3：已映射账户整组缺失/空值时市值会静默按 0 → 全额减记。显式警告。
+    for target in set(ACCOUNT_MAP.values()) - seen:
+        warnings.append(f"已映射账户 {target} 在 CSV 中整组缺失，市值将按 0 处理"
+                        "（若非清仓请检查导出完整性）")
+    for w in warnings:
+        print(f"[警告] {w}")
     return out
 
 
@@ -86,6 +101,11 @@ def main():
     ap.add_argument("--date", default=date.today().isoformat(), help="调整分录日期（季度末）")
     ap.add_argument("--write", action="store_true", help="写入 journals/fair-value-<date>.journal")
     args = ap.parse_args()
+    try:  # 红队 RT4-P1-4：非法日期（如 2026-09-31）会写进 journal 瘫痪全账本
+        day = date.fromisoformat(args.date)
+    except ValueError as e:
+        sys.exit(f"--date 非法: {args.date!r}（{e}）")
+    args.date = day.isoformat()
 
     holdings = read_holdings(args.holdings)
     book = journal_invest_balances()
@@ -118,7 +138,11 @@ def main():
         if out.exists():
             sys.exit(f"{out.name} 已存在，拒绝覆盖（防重复回写；请先核对删除旧文件）")
         out.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        print(f"已写入 {out.name}；请运行 python src/finance.py check 验证平衡")
+        print(f"已写入 {out.name}")
+        # 写后自动校验（防毒 journal 流出）
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from finance import check  # noqa: E402
+        check()
     else:
         print("\n── 分录草稿（--write 才写入）──")
         print("\n".join(lines))

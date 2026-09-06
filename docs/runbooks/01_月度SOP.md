@@ -50,7 +50,10 @@ venv/Scripts/python src/finance.py check
 
 ## 4. Paisa 同步（约 1 分钟）
 
-- [ ] 若有新的 `import-*.journal` 文件：把 include 行加进 `paisa_test/all.journal`
+- [ ] **所有新产生的 journal 都要加 include 到 `paisa_test/all.journal`**：
+  `import-*.journal`（步骤 1）、`reconcile-*.journal`（步骤 3）、`fair-value-*.journal`（步骤 6 季末）、
+  `*-opening.journal`（期初建账后）、`recurring.journal`（P1.6 后）——漏加会导致 Paisa 与 CLI 口径分裂
+- [ ] 快速自查：`ls journals/*.journal` 的文件数 == `paisa_test/all.journal` 的 include 行数
 
 ```bash
 vendor/paisa/paisa.exe update --config paisa_test/paisa.yaml
@@ -65,11 +68,13 @@ cd journals && git add -A && git commit -m "monthly: YYYY-MM 导入+对账" && c
 
 ## 6. 季末加做（约 10 分钟）
 
-- [ ] Wealthfolio 导出 holdings CSV → `raw/`，执行 `venv/Scripts/python src/sync_fair_value.py raw/<holdings>.csv --date <季末日> --write`（F5）
+- [ ] Wealthfolio 导出 holdings CSV → `raw/`，执行 `venv/Scripts/python src/sync_fair_value.py raw/<holdings>.csv --date <季末日> --write`（F5；注意脚本警告：账户缺失/空市值会先确认再写）
 - [ ] `venv/Scripts/python src/finance.py report <年>` 生成四期五表 PDF/CSV（F6）
 - [ ] `venv/Scripts/python src/finance.py forecast` 看应急金覆盖月数
 - [ ] `venv/Scripts/python src/finance.py close <年> <Q1|H1|Q3|AN>` 结账（快照+留存收益结转）
 - [ ] 核对：财报投资科目 = Wealthfolio 期末市值；资产=负债+权益
+- [ ] 把 `fair-value-*.journal` 加入 `paisa_test/all.journal` 并重跑 `paisa update`
+- [ ] **季末产物再提交一次账本仓**：`cd journals && git add -A && git commit -m "quarterly: YYYY QN 回写+结账" && cd ..`
 
 ## 排错速查
 
