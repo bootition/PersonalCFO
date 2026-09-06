@@ -31,7 +31,7 @@ last_reviewed: 2026-09-06
 | P0 仓库与环境 | ✅ 完成（2026-09-06） | 随 P1 首份报告追溯复核 |
 | P1 会计核心上线 | 🔄 进行中 | 待出 |
 | P2 Wealthfolio 接入 | 🔄 2.3 sync_fair_value.py 完成（字段断言+合成测试）；2.1/2.2 待用户安装录入 | — |
-| P3 Paisa Fork | 🔄 3.1 构建跑通（npm/go build + 真实 journal 4614 postings 入库）；另修复 CREATE_NO_WINDOW 编码 bug（比已知 1 行 bug 更大）；3.2-3.5 待做 | — |
+| P3 Paisa Fork | 🔄 3.1 构建跑通（含 CREATE_NO_WINDOW 编码修复）✅、3.2 导航+主面板中文化（80/20）✅、3.3 Flexoki 主题（截图验证浅/深色）✅、3.4 CFO 工具入口（API+页面+预算隐藏，端到端 curl 通过）✅、3.5 dev 形态（启动 bat）✅——红队审查中 | — |
 | P4 打磨 | 🔄 4.1 forecast（含应急金覆盖月数）+4.2 reconcile（模板/差异/调账分录）+4.3 月度 SOP 完成；4.4 待观察期 | — |
 | P1.4 银行全自动导入 | ⏸ 暂缓（用户决定，先半追踪模式） | — |
 | 账本私仓 PersonalCFO-ledger | ⏸ 暂缓（本地 git 先用） | — |

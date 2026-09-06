@@ -4,6 +4,7 @@
 /reports/
 /close/
 *.bak
+*.bat
 
 # ── 外部工具与底座（本地保留，另行管理；仅根目录） ──
 /tools/
