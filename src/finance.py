@@ -383,8 +383,10 @@ def forecast(months: int = 12):
         "",
         f"── 未来 {months} 个月预测（hledger --forecast；依赖 `~ monthly` 定期规则，P1.6 金额待用户）──",
     ]
+    # 注意：--forecast 的 period 参数不约束报表窗口（实测会越界生成），
+    # 正确用法 = 裸 --forecast + -b/-e 显式报表窗口
     fc = hledger(*journal_args(), "balance", *CASH_ACCOUNTS,
-                 "--forecast", f"today..+{months}months", "--flat")
+                 "--forecast", "-b", "today", "-e", f"+{months}months", "--flat")
     lines.append(fc if fc.strip() else "（当前无定期规则，预测=现状平推；P1.6 落地后自动生效）")
     REPORTS_DIR.mkdir(exist_ok=True)
     out = REPORTS_DIR / f"forecast-{date.today().isoformat()}.txt"
