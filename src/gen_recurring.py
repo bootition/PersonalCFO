@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 JOURNALS_DIR = ROOT / "journals"
 CONFIG_DIR = ROOT / "config"
 RULES_FILE = CONFIG_DIR / "recurring_rules.yaml"
@@ -74,6 +75,17 @@ def read_kv_blocks(text: str):
     return data
 
 
+def _money(s, label):
+    s = (s or "").strip()
+    if not s:
+        return None
+    from finance import parse_money_strict
+    try:
+        return parse_money_strict(s)
+    except ValueError as e:
+        sys.exit(f"{label} {e}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true", help="允许覆盖已有 recurring.journal")
@@ -91,7 +103,7 @@ def main():
 
     sal = cfg["salary"].get("amount")
     if sal:
-        amount = float(sal.replace(",", ""))
+        amount = _money(sal, "工资")
         blocks += ["",
                    "; 工资月末计提（就业后生效；到账冲销走日常分录）",
                    "~ monthly",
@@ -101,7 +113,7 @@ def main():
 
     rent = cfg["rent"].get("monthly")
     if rent:
-        m = float(rent.replace(",", ""))
+        m = _money(rent, "房租")
         blocks += ["",
                    "; 房租按月摊销（预付分录走日常导入）",
                    "~ monthly",
@@ -111,7 +123,7 @@ def main():
     for item in cfg["depreciation"]:
         try:
             acct = item["account"]
-            cost = float(item["cost"].replace(",", ""))
+            cost = _money(item["cost"], "折旧原价")
             years = float(item["years"])
             start = item["start"]
         except (KeyError, ValueError) as e:
@@ -141,7 +153,8 @@ def main():
     out.write_text("\n".join(blocks) + "\n", encoding="utf-8")
     print(f"已写入 {out.name}")
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from finance import check  # noqa: E402
+    from finance import check, refresh_paisa_includes  # noqa: E402
+    refresh_paisa_includes()
     check()
     print("提示：forecast 报表随即生效（venv/Scripts/python src/finance.py forecast）")
 

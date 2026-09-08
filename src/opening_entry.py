@@ -16,6 +16,7 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 JOURNALS_DIR = ROOT / "journals"
 CONFIG_DIR = ROOT / "config"
 OPENING_FILE = CONFIG_DIR / "opening_balances.yaml"
@@ -72,7 +73,7 @@ def read_balances(path: Path):
         if not (acct.startswith(("Assets:", "Liabilities:"))):
             sys.exit(f"第 {ln} 行科目须以 Assets:/Liabilities: 开头：{acct!r}")
         try:
-            v = float(amt)
+            v = __import__("finance").parse_money_strict(amt)
         except ValueError:
             sys.exit(f"第 {ln} 行金额无法解析：{amt!r}")
         if abs(v) > 0.004:
@@ -115,9 +116,10 @@ def main():
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     print(f"已写入 {out.name}（{len(balances)} 个科目；Equity:期初调整 差额 {-total:,.2f}）")
-    # 平衡校验（借用 finance.py 的 hledger 封装）
+    # 平衡校验 + Paisa 合并入口刷新（红队 P5 d 项：不刷会导致 UI 看不到期初账本）
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from finance import check  # noqa: E402
+    from finance import check, refresh_paisa_includes  # noqa: E402
+    refresh_paisa_includes()
     check()
 
 
