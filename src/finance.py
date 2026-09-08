@@ -19,6 +19,13 @@ import sys
 from datetime import date
 from pathlib import Path
 
+# GBK 控制台防护（红队 P5 f 项）：无 PYTHONIOENCODING 时 forecast 等中文输出不再崩溃
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from journal_stats import smoke_report  # noqa: E402
 
