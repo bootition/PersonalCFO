@@ -85,6 +85,49 @@ def check():
     print("check OK —", out or "账本平衡")
 
 
+def status():
+    """初始化状态总览（JSON），供 Paisa /api/pcfo/init/status 使用。空账本也正常返回。"""
+    import json as _json
+    from journal_stats import journal_stats, parse_journal
+    s = {"imported": [], "opening": False, "recurring": False,
+         "check_ok": True, "check_output": "", "fixme_txs": 0,
+         "fixme_amount": 0.0, "raw_files": sorted(p.name for p in RAW_DIR.iterdir()
+                                                  if p.is_file() and not p.name.startswith("."))}
+    for f in sorted(JOURNALS_DIR.glob("import-*.journal")):
+        s["imported"].append({"file": f.name, "txs": journal_stats(f)["txs"]})
+    s["opening"] = any(JOURNALS_DIR.glob("*-opening.journal"))
+    s["recurring"] = (JOURNALS_DIR / "recurring.journal").exists()
+    files = sorted(JOURNALS_DIR.glob("*.journal"))
+    if not files:
+        s["check_output"] = "账本为空（尚未导入账单）"
+    else:
+        res = subprocess.run([str(HL), *[a for f in files for a in ("-f", str(f))], "check"],
+                             capture_output=True)
+        s["check_ok"] = res.returncode == 0
+        s["check_output"] = (res.stdout.decode("utf-8", errors="replace").strip()
+                             or res.stderr.decode("utf-8", errors="replace").strip())
+        fc, fa = 0, 0.0
+        for f in files:
+            for t in parse_journal(f):
+                hits = [(acc, a) for acc, a in t["postings"] if "FIXME" in acc]
+                if hits:
+                    fc += 1
+                    fa += sum(abs(a) for _, a in hits)
+        s["fixme_txs"], s["fixme_amount"] = fc, round(fa, 2)
+    print(_json.dumps(s, ensure_ascii=False, indent=2))
+
+
+def refresh_paisa_includes():
+    """把 journals/*.journal 全部写入 paisa_test/all.journal（软件自动维护，无需手工）。"""
+    paisa_dir = ROOT / "paisa_test"
+    if not paisa_dir.exists():
+        return
+    lines = ["# Paisa 合并入口（finance.py import 自动维护，勿手改）"]
+    for f in sorted(JOURNALS_DIR.glob("*.journal")):
+        lines.append(f"include {f.as_posix()}")
+    (paisa_dir / "all.journal").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _iter_alipay_rows(bill: Path):
     header = False
     with open(bill, encoding="gbk", errors="replace") as f:
@@ -240,6 +283,8 @@ def import_bills():
             # 拆后终态冒烟（拆分会新增补录分录，FIXME 以拆后为准）
             report, _ = smoke_report(platform, out, None)
             print(f"── 拆后终态 {report.splitlines()[1]}\n   {report.splitlines()[-2]}\n   {report.splitlines()[-1]}")
+    # 自动维护 paisa_test/all.journal（新 journal 自动进入 Paisa 口径）
+    refresh_paisa_includes()
     # 汇总平衡校验（hledger check 全部 journal）
     check()
     print("导入完成；FIXME 队列见：tools/hledger-bin/hledger.exe -f journals/import-*.journal register FIXME")
@@ -564,6 +609,7 @@ def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("check")
+    sub.add_parser("status")
     sub.add_parser("import")
     p = sub.add_parser("report"); p.add_argument("year", type=int)
     p = sub.add_parser("close"); p.add_argument("year", type=int); p.add_argument("period")
@@ -573,6 +619,8 @@ def main():
     args = ap.parse_args()
     if args.cmd == "check":
         check()
+    elif args.cmd == "status":
+        status()
     elif args.cmd == "import":
         import_bills()
     elif args.cmd == "report":
