@@ -128,6 +128,17 @@ def refresh_paisa_includes():
     (paisa_dir / "all.journal").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+MONEY_RE = __import__("re").compile(r"^-?(\d+|\d{1,3}(,\d{3})*)(\.\d+)?$")
+
+
+def parse_money_strict(s: str) -> float:
+    """严格金额：只接受 123 / 1,234.56 千分位（拒绝 "1,2" 之类）；非法抛 ValueError。"""
+    t = (s or "").strip()
+    if not MONEY_RE.match(t):
+        raise ValueError(f"非法金额: {s!r}")
+    return float(t.replace(",", ""))
+
+
 def _iter_alipay_rows(bill: Path):
     header = False
     with open(bill, encoding="gbk", errors="replace") as f:
@@ -538,11 +549,10 @@ def reconcile(write: bool = False):
         if not line or line.startswith("#") or ":" not in line:
             continue
         acct, _, amt = line.rpartition(":")
-        amt = amt.strip().replace(",", "")
-        if amt:
+        if amt.strip():
             try:
-                v = float(amt)
                 import math
+                v = parse_money_strict(amt)
                 if not math.isfinite(v):  # 红队 RT4-P2-3：inf/nan 会写毒 journal/假"账实一致"
                     print(f"[跳过] 非法金额（inf/nan）: {line}")
                     continue
@@ -595,6 +605,7 @@ def reconcile(write: bool = False):
         sys.exit(f"{out.name} 已存在，拒绝覆盖（同日重复核对请先删除旧文件）")
     out.write_text("; 账实核对调账（reconcile 生成）\n" + "\n".join(entries) + "\n",
                    encoding="utf-8")
+    refresh_paisa_includes()  # 新 journal 即时进入 Paisa 口径
     # 写后校验，失败回滚（红队 RT4-P2-3：毒 journal 不留存）
     res = subprocess.run([str(HL), *journal_args(), "check"], capture_output=True)
     if res.returncode != 0:

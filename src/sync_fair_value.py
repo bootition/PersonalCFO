@@ -60,10 +60,14 @@ def read_holdings(path: Path):
         raw = (r["market_value"] or "").strip()
         if raw == "":
             warnings.append(f"第 {i} 行 {acct}/{r['symbol_name']} market_value 为空（按 0 计入）")
-        try:
-            mv = float(raw.replace(",", "") or 0)
-        except ValueError:
-            sys.exit(f"第 {i} 行 market_value 无法解析: {raw!r}")
+            mv = 0.0
+        else:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from finance import parse_money_strict
+            try:
+                mv = parse_money_strict(raw)
+            except ValueError:
+                sys.exit(f"第 {i} 行 market_value 无法解析: {raw!r}（仅允许 123 或 1,234.56）")
         seen.add(target)
         out[target] = out.get(target, 0.0) + mv
     # 红队 RT4-P1-3：已映射账户整组缺失/空值时市值会静默按 0 → 全额减记。显式警告。
