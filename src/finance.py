@@ -98,8 +98,9 @@ def status():
     from journal_stats import journal_stats, parse_journal
     s = {"imported": [], "opening": False, "recurring": False,
          "check_ok": True, "check_output": "", "fixme_txs": 0,
-         "fixme_amount": 0.0, "raw_files": sorted(p.name for p in RAW_DIR.iterdir()
-                                                  if p.is_file() and not p.name.startswith("."))}
+         "fixme_amount": 0.0, "balance_accounts": [],
+         "raw_files": sorted(p.name for p in RAW_DIR.iterdir()
+                             if p.is_file() and not p.name.startswith("."))}
     for f in sorted(JOURNALS_DIR.glob("import-*.journal")):
         s["imported"].append({"file": f.name, "txs": journal_stats(f)["txs"]})
     s["opening"] = any(JOURNALS_DIR.glob("*-opening.journal"))
@@ -122,6 +123,18 @@ def status():
                     fc += 1
                     fa += sum(abs(a) for _, a in hits)
         s["fixme_txs"], s["fixme_amount"] = fc, round(fa, 2)
+        # P7.1：期初「货币类」科目从已导入账单推导：
+        # 现金/银行存款/负债（花呗/信用卡等）——只列这些；
+        # 投资与固定资产属于另一类期初决策，不混进自动推导（由 /init 单独讨论）
+        bal = set()
+        for f in files:
+            for t in parse_journal(f):
+                for acc, _amt in t["postings"]:
+                    if "FIXME" in acc:
+                        continue
+                    if acc.startswith(("Assets:现金", "Assets:银行存款", "Liabilities:")):
+                        bal.add(acc)
+        s["balance_accounts"] = sorted(bal)
     print(_json.dumps(s, ensure_ascii=False, indent=2))
 
 
