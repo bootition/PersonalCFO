@@ -108,8 +108,9 @@ def status():
     if not files:
         s["check_output"] = "账本为空（尚未导入账单）"
     else:
-        res = subprocess.run([str(HL), *[a for f in files for a in ("-f", str(f))], "check"],
-                             capture_output=True)
+        # P7 红队 P1-1：必须走 run_console_utf8（先 chcp 65001），
+        # 否则经 Paisa pcfoExec 的 piped stdio 调 hledger 会按 CP936 解码 UTF-8 中文账本
+        res = run_console_utf8([str(HL), *[a for f in files for a in ("-f", str(f))], "check"])
         s["check_ok"] = res.returncode == 0
         s["check_output"] = (res.stdout.decode("utf-8", errors="replace").strip()
                              or res.stderr.decode("utf-8", errors="replace").strip())

@@ -41,6 +41,7 @@ GITIGNORED_YAMLS = [
     CONFIG / "local.yaml",
     CONFIG / "opening_balances.yaml",
     CONFIG / "recurring.yaml",
+    CONFIG / "recurring_rules.yaml",  # P7 红队 P2-2：实际文件名为 recurring_rules.yaml
 ]
 
 
@@ -55,7 +56,8 @@ def stop_paisa() -> None:
         )
     except FileNotFoundError:
         pass
-    time.sleep(0.3)
+    # P7 红队 P2-2：0.3s 曾致 paisa.db 仍被进程占用；等 1.5s 再删
+    time.sleep(1.5)
 
 
 def move_into(src_dir: Path, dst: Path, pattern: str) -> list[Path]:
@@ -81,8 +83,16 @@ def reset_all_journal() -> None:
 def remove_sqlite_db(db: Path) -> None:
     for suffix in ("", "-journal", "-shm", "-wal"):
         f = Path(str(db) + suffix)
-        if f.exists():
-            f.unlink()
+        for attempt in range(3):
+            if not f.exists():
+                break
+            try:
+                f.unlink()
+                break
+            except PermissionError:
+                if attempt == 2:
+                    raise
+                time.sleep(0.5)
 
 
 def main() -> int:
@@ -94,6 +104,9 @@ def main() -> int:
 
     raw_moved = move_into(RAW, target / "raw", "*")
     imports_moved = move_into(JOURNALS, target, "import-*.journal")
+    # P7 红队 P2-2：期初分录与定期规则 journal 也归档，不留残留
+    opening_moved = move_into(JOURNALS, target, "*-opening.journal")
+    recurring_moved = move_into(JOURNALS, target, "recurring.journal")
 
     db = PAISA_TEST / "paisa.db"
     remove_sqlite_db(db)
