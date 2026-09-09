@@ -35,6 +35,7 @@ last_reviewed: 2026-09-09
 | P4 打磨 | ✅ 4.1/4.2/4.3 完成（红队终审通过，报告 03）；4.4 待观察期 | `docs/reports/03_P2.3+P4_红队审查_2026-09-07.md` |
 | **P5 软件自引导改造**（2026-09-08） | ✅ 完成：数据清空+初始化向导四步+月度同入口；红队一审（P1×1/P2×7）→ 修复 → 终审**通过（有条件，条件已补修）**，审查关闭 | `docs/reports/04_P5_自引导改造红队审查_2026-09-08.md` |
 | **P6 多文件上传 + Wealthfolio 侧边栏**（2026-09-09） | ✅ 完成：/init 拖拽+多选追加+chips+一次多文件上传；232px 左侧栏（桌面/移动抽屉/深浅主题）；paisa.yaml 绝对路径+bat 自愈。红队终审 **PASS**（P1×1 审查期间已修复复测：移动端汉堡移出 aside；P2×3 不阻断已回写缺口） | `docs/reports/05_P6_多文件上传_Wealthfolio侧边栏红队审查_2026-09-09.md` |
+| **P7 UI 整页 Wealthfolio 化**（2026-09-09） | 🔄 进行中：已清空运行态（`src/reset_init.py`）让用户重走初始化；提取 Flexoki 完整设计令牌到 `:root`，替换 bulma 硬编码；干掉 body dot-grid；`.box` 纸面+边框+0.75rem；图表去 `textures.lines()` 整张 svg 黑底（只注入 defs，轴/网格/文字用令牌）；左侧栏加图标 + active 用 --color-accent-soft。paisa.exe 已重建。**红队复审 + 报告06 待办** | `docs/reports/06_P7_…_红队审查_2026-09-09.md`（待写） |
 | P1.4 银行全自动导入 | ⏸ 暂缓（用户决定，先半追踪模式） | — |
 | 账本私仓 PersonalCFO-ledger | ⏸ 暂缓（本地 git 先用） | — |
 
@@ -57,7 +58,7 @@ last_reviewed: 2026-09-09
 
 ## 进行中的工作
 
-- 无（P6 已于 2026-09-09 红队终审 PASS 收官）。下一批需用户参与的待办见 `docs/runbooks/02_用户决策清单.md`（初始化①-④步、FIXME 定性队列、Wealthfolio 安装录入等）。
+- **P7 UI 整页重做**（2026-09-09 起）：已交付 Flexoki 令牌 + 清掉图表黑底 + 重建 paisa.exe；下一轮派独立红队按 P6 同款口径（a–h + 自由攻击）出报告 `docs/reports/06_P7_…`；用户可现在重走初始化。
 
 ## 当前有效文档（Current Truth）
 
