@@ -36,6 +36,7 @@ last_reviewed: 2026-09-09
 | **P5 软件自引导改造**（2026-09-08） | ✅ 完成：数据清空+初始化向导四步+月度同入口；红队一审（P1×1/P2×7）→ 修复 → 终审**通过（有条件，条件已补修）**，审查关闭 | `docs/reports/04_P5_自引导改造红队审查_2026-09-08.md` |
 | **P6 多文件上传 + Wealthfolio 侧边栏**（2026-09-09） | ✅ 完成：/init 拖拽+多选追加+chips+一次多文件上传；232px 左侧栏（桌面/移动抽屉/深浅主题）；paisa.yaml 绝对路径+bat 自愈。红队终审 **PASS**（P1×1 审查期间已修复复测：移动端汉堡移出 aside；P2×3 不阻断已回写缺口） | `docs/reports/05_P6_多文件上传_Wealthfolio侧边栏红队审查_2026-09-09.md` |
 | **P7 UI 整页 Wealthfolio 化**（2026-09-09） | ✅ 完成：Flexoki 完整 8 色 accent 50–950 令牌；图表去整张 svg 黑底（只注入 defs）；/init 四步向导与 /cfo 工具页重做；组件皮肤 paper+0.75rem+hairline；深浅色兜底实测正确。红队一审**不通过（有条件：status() 编码路径 P1）→ 已补修复测 → 复审关闭，P7 通过**（P1×2 关闭；P2×4 不阻断已回写缺口） | `docs/reports/06_P7_UI整页Wealthfolio化红队审查_2026-09-09.md`（approved） |
+| **P7.1 用户反馈修复**（2026-09-09） | ✅ 完成：默认纸面浅色（不再跟随系统深色，旧偏好一次性重置）；空账本首页删英文/Setup Demo，改单一「开始初始化」CTA；/init 四步改横向分段控件（去掉平行圆点）。Edge headless 实测 body #fffcf0、无 console 错、svelte-check 0 错 | fork `4401bc2`（本地） |
 | P1.4 银行全自动导入 | ⏸ 暂缓（用户决定，先半追踪模式） | — |
 | 账本私仓 PersonalCFO-ledger | ⏸ 暂缓（本地 git 先用） | — |
 
