@@ -35,7 +35,7 @@ last_reviewed: 2026-09-09
 | P4 打磨 | ✅ 4.1/4.2/4.3 完成（红队终审通过，报告 03）；4.4 待观察期 | `docs/reports/03_P2.3+P4_红队审查_2026-09-07.md` |
 | **P5 软件自引导改造**（2026-09-08） | ✅ 完成：数据清空+初始化向导四步+月度同入口；红队一审（P1×1/P2×7）→ 修复 → 终审**通过（有条件，条件已补修）**，审查关闭 | `docs/reports/04_P5_自引导改造红队审查_2026-09-08.md` |
 | **P6 多文件上传 + Wealthfolio 侧边栏**（2026-09-09） | ✅ 完成：/init 拖拽+多选追加+chips+一次多文件上传；232px 左侧栏（桌面/移动抽屉/深浅主题）；paisa.yaml 绝对路径+bat 自愈。红队终审 **PASS**（P1×1 审查期间已修复复测：移动端汉堡移出 aside；P2×3 不阻断已回写缺口） | `docs/reports/05_P6_多文件上传_Wealthfolio侧边栏红队审查_2026-09-09.md` |
-| **P7 UI 整页 Wealthfolio 化**（2026-09-09） | 🔄 进行中：已清空运行态（`src/reset_init.py`）让用户重走初始化；提取 Flexoki 完整设计令牌到 `:root`，替换 bulma 硬编码；干掉 body dot-grid；`.box` 纸面+边框+0.75rem；图表去 `textures.lines()` 整张 svg 黑底（只注入 defs，轴/网格/文字用令牌）；左侧栏加图标 + active 用 --color-accent-soft。paisa.exe 已重建。**红队复审 + 报告06 待办** | `docs/reports/06_P7_…_红队审查_2026-09-09.md`（待写） |
+| **P7 UI 整页 Wealthfolio 化**（2026-09-09） | 🔄 实现完成，红队复审待办：Flexoki 完整 8 色 accent 50–950 令牌 + 语义令牌（surface/text/border/grid/positive/negative）；图表去 `textures.lines()` 整张 svg 底色（只注入 defs），`.svg-text-*`/`.svg-grey-*`/`.axis` 全令牌化；`/init` 四步向导重做为胶囊步骤条+上传卡片+chips+表单网格+状态卡片；`/cfo` 四工具卡片化；按钮/输入/选择框 paper+0.75rem+hairline；深浅色 body/sidebar 已用 dark.scss `!important` 兜底实测正确（body #100f0f / sidebar #1c1b1a / active accent）。paisa.exe 已重建（17:03）。**红队复审 + 报告06 待办** | `docs/reports/06_P7_…_红队审查_2026-09-09.md`（待写） |
 | P1.4 银行全自动导入 | ⏸ 暂缓（用户决定，先半追踪模式） | — |
 | 账本私仓 PersonalCFO-ledger | ⏸ 暂缓（本地 git 先用） | — |
 
