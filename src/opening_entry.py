@@ -152,8 +152,8 @@ def build_from_json(payload: dict):
         v = _money(raw, f"余额 {acct}")
         if v is None or abs(v) < 0.004:
             continue
-        if acct.startswith("Liabilities:") and v > 0:
-            v = -v  # 正数负债自动转负
+        # P7.6：不再自动把正数负债转负——信用卡可能有溢缴款（正数），
+        # 欠款请填负数，由用户显式决定符号
         postings[acct] = round(v, 2)
 
     # 2) 投资逐项（每笔买入：日期+数量+单价；成本=Σ qty×price，只计建账日及之前）
@@ -202,11 +202,17 @@ def build_from_json(payload: dict):
         if cost is None or cost <= 0 or not (1 <= years <= 60):
             raise ValueError(f"固定资产[{name}]原价/年限非法")
         purchase = _parse_day(fa.get("purchase_date", ""), f"固定资产[{name}]购买日期")
+        if purchase > opening_day:
+            # P7.6：建账日之后购买的大件不属于期初资产负债表；
+            # 请在购买发生后按日常分录/后续功能登记，不再混进期初
+            notes.append(f"[{name}] 购买日期 {purchase.isoformat()} 晚于建账日 "
+                         f"{opening_day.isoformat()}，未计入期初（请在购置后单独登记）")
+            continue
         salvage = _money(fa.get("salvage", ""), f"固定资产[{name}]残值") or 0.0
         salvage = min(salvage, cost)
         total_months = int(years * 12)
         monthly = (cost - salvage) / total_months
-        months_used = max(0, _month_diff(purchase, opening_day)) if purchase <= opening_day else 0
+        months_used = max(0, _month_diff(purchase, opening_day))
         months_used = min(months_used, total_months)
         acc_dep = round(monthly * months_used, 2)
         acc_dep = min(acc_dep, round(cost - salvage, 2))
