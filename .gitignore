@@ -37,6 +37,7 @@ docs/本地待办_DO_NOT_COMMIT.md
 config/opening_balances.yaml
 config/recurring_rules.yaml
 config/opening_init.json
+config/opening_draft.json
 
 # ── AI 会话产物与机器证据（仅本地） ──
 .planning/
