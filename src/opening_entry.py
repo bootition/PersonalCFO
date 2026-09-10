@@ -240,10 +240,38 @@ def build_from_json(payload: dict):
     return postings, notes, fixed_rules
 
 
-def write_opening(opening_day: date, postings: dict, notes: list, force: bool):
+def read_existing_opening(path: Path) -> dict:
+    """P7.6：读回已有期初分录的科目→金额（不含 Equity:期初调整），用于分批合并。"""
+    postings = {}
+    if not path.exists():
+        return postings
+    for line in path.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if not s or s.startswith(";") or s[:4].isdigit() and "/" in s[:10]:
+            continue
+        m = re.match(r"^(\S.*?)\s{2,}(-?\s?[\d,]+(?:\.\d+)?)\s*CNY\s*$", s)
+        if not m:
+            continue
+        acct = m.group(1).strip()
+        if acct == "Equity:期初调整":
+            continue
+        amt = float(m.group(2).replace(",", "").replace(" ", ""))
+        postings[acct] = amt
+    return postings
+
+
+def write_opening(opening_day: date, postings: dict, notes: list, force: bool, merge: bool = False):
     out = JOURNALS_DIR / f"{opening_day.isoformat()}-opening.journal"
     if out.exists() and not force:
         raise FileExistsError(f"{out.name} 已存在（防重复建账）。确认重建请加 --force")
+    if merge and out.exists():
+        existing = read_existing_opening(out)
+        merged = dict(existing)
+        merged.update(postings)  # 同名科目用新值覆盖
+        if len(merged) != len(postings):
+            notes = list(notes) + [f"本次只更新/新增 {len(postings)} 个科目，"
+                                   f"合并保留已有 {len(merged) - len(postings)} 个科目（分批录入）"]
+        postings = merged
     total = round(sum(postings.values()), 2)
     width = max([len(a) for a in postings] + [len("Equity:期初调整")])
     lines = [f"; 期初建账 {opening_day.isoformat()}（opening_entry 生成）",
@@ -258,17 +286,38 @@ def write_opening(opening_day: date, postings: dict, notes: list, force: bool):
     return out
 
 
-def write_fixed_rules(fixed_rules: list):
-    lines = ["; 固定资产折旧规则（opening_entry 生成，仅本地，勿手改）",
-             "; 修改请在初始化向导第②步重新生成期初。"]
+def read_existing_fixed_rules(path: Path) -> dict:
+    """P7.6：读回已有折旧规则块（按资产名），供分批合并保留。"""
+    rules = {}
+    if not path.exists():
+        return rules
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for i, ln in enumerate(lines):
+        m = re.match(r"^;\s*(.+?)：每月", ln)
+        if m and i + 2 < len(lines) and lines[i + 1].startswith("~ monthly"):
+            rules[m.group(1).strip()] = lines[i:i + 4]
+    return rules
+
+
+def write_fixed_rules(fixed_rules: list, merge: bool = False):
+    blocks = read_existing_fixed_rules(FIXED_RECURRING) if merge else {}
+    preserved = 0
     for r in fixed_rules:
-        lines += ["",
-                  f"; {r['name']}：每月 {r['monthly']:,.2f}，{r['start']} 起折",
-                  f"~ monthly from {r['start']} to {r['end']}",
-                  f"    Expenses:折旧    {r['monthly']:,.2f} CNY",
-                  f"    Assets:累计折旧:{r['name']}    -{r['monthly']:,.2f} CNY"]
+        if r["name"] in blocks:
+            preserved += 1
+        blocks[r["name"]] = [
+            f"; {r['name']}：每月 {r['monthly']:,.2f}，{r['start']} 起折",
+            f"~ monthly from {r['start']} to {r['end']}",
+            f"    Expenses:折旧    {r['monthly']:,.2f} CNY",
+            f"    Assets:累计折旧:{r['name']}    -{r['monthly']:,.2f} CNY",
+        ]
+    lines = ["; 固定资产折旧规则（opening_entry 生成，仅本地，勿手改）",
+             "; 修改请在初始化向导第②步重新生成期初；分批录入会自动合并保留。"]
+    for _name, block in blocks.items():
+        lines += [""] + block
     FIXED_RECURRING.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"已写入 {FIXED_RECURRING.name}（{len(fixed_rules)} 条折旧规则）")
+    print(f"已写入 {FIXED_RECURRING.name}（{len(fixed_rules)} 条本次提交，"
+          f"合并后共 {len(blocks)} 条）")
 
 
 def main():
@@ -282,8 +331,8 @@ def main():
         payload = _json.loads(Path(args.json).read_text(encoding="utf-8"))
         opening_day = _parse_day(payload.get("date", args.date))
         postings, notes, fixed_rules = build_from_json(payload)
-        write_opening(opening_day, postings, notes, args.force)
-        write_fixed_rules(fixed_rules)
+        write_opening(opening_day, postings, notes, args.force, merge=True)
+        write_fixed_rules(fixed_rules, merge=True)
         from finance import check, refresh_paisa_includes
         refresh_paisa_includes()
         check()
