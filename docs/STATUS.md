@@ -40,6 +40,7 @@ last_reviewed: 2026-09-09
 | **P7.2 期初统计重做**（2026-09-09） | ✅ 完成：①上传成功后自动跳第②步；②货币科目从账单自动推导（只列现金/银行/负债，不再写死用户特有科目）；③投资逐项+逐笔买入（日期+数量+单价算成本，可填市值自动把差额进期初调整）；④固定资产逐件追溯历史折旧（期初记净值，自动生成 fixed-assets-recurring.journal 继续按月折）；⑤opening 端点改 JSON 模式（严格校验）。单元+UI 复测通过 | 本轮提交 |
 | **P7.3 初始化守卫 + 清空重测**（2026-09-09） | ✅ 完成：主页检查 `/api/pcfo/init/status`——已导入账单但期初未建时**自动跳回 /init**（修复 bat `paisa update` 同步 DB 后误放行主页面）；第④步加「去总览」。运行态已清空（raw/import journal 归档到 journals/bak、paisa.db 删除、all.journal 复位），`finance.py status` 全空。Playwright 验证：空白态留欢迎页、模拟未完成自动跳 /init、去总览按钮存在 | fork `895ac98`（本地） |
 | **P7.4 期初表单体验修复**（2026-09-09） | ✅ 完成：科目标签按末段具体化（建行/工行/招行/光大银行卡、支付宝/余额宝余额，不再四个都叫“银行存款”）；建账日期默认今天且可编辑（记不清就填现在的余额，文案说明历史期间口径）；新增「其他科目」自定义行（纸币等电子账单没有的资产）；直接跳第②步也会先拉状态再显示推导科目 | fork `87ba6c2`（本地） |
+| **P7.5 守卫跳转崩页修复**（2026-09-10） | ✅ 完成：双击 bat 报 `TypeError: Cannot read properties of null (reading 'parentElement')`——根因是 P7.3 守卫 `await goto("/init")` 后没 `return`，页面卸载后继续跑 d3 图表渲染，`document.getElementById` 得到 null。加 `return` 后实测：真实数据（已导入+期初未建）→ `/` 自动跳 `/init`，0 console/page error；`/init` 亦 0 错。`paisa.exe` 20:58 重建 | fork `0409d2b`（本地） |
 | P1.4 银行全自动导入 | ⏸ 暂缓（用户决定，先半追踪模式） | — |
 | 账本私仓 PersonalCFO-ledger | ⏸ 暂缓（本地 git 先用） | — |
 
