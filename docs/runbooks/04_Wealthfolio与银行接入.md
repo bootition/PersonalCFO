@@ -64,21 +64,35 @@ venv/Scripts/python scripts/reconcile-check.py     # 全绿才算完成
 ### B2. 现状（重要）
 
 - 已原生支持：**支付宝 CSV、微信 XLSX、花呗 PDF**（自动导入+拆分）。
-- 银行流水：deg 已内置这些 provider（`reference/double-entry-generator/pkg/provider/`）：
-  `ccb`（建行）、`cmb`（招行）、`icbc`（工行）、`boc`（中行）、`abc_debit`（农行）、
-  `bocom_debit`（交行）、`citic`（中信）、`spdb_debit`（浦发）、`cgb_credit`（广发）等。
-  但**还没有对应的 `config/<bank>.yaml` 规则 + 没接入 `finance.py` 的 IMPORT_JOBS**，所以现在直接传银行 CSV 不会自动入账。
+- **银行已预置**（P7.22）：建行 `ccb`、招行 `cmb`、工行 `icbc` 三家的 provider + 配置 + 独立导入命令，
+  用 deg 官方示例账单实测通过（建行 xls 7 笔、招行借记 6 笔/信用卡 7 笔、工行借记 12 笔/信用卡 10 笔，全部平衡）。
+- 光大银行：deg 没有内置 provider，需要单独转换（把你的导出样例发我，我写一个转换器或规则）。
+- 银行配置默认**全部落 FIXME**（不猜科目）；第一次导入后按冒烟报告补 `config/<bank>.yaml` 规则。
 
-### B3. 接入步骤（你把文件给我，我来写配置）
+### B3. 接入步骤（现在就能做）
 
-1. 你导出银行 CSV → `raw/`（或 UI 上传）。
-2. 我按 `config/alipay.yaml` 的模板写 `config/<bank>.yaml`（对照该银行 CSV 的列名），
-   并把该 provider 加进 `src/finance.py` 的 `IMPORT_JOBS`。
-3. 跑 `finance.py import` 冒烟（行数归因"未解释 0 行"）+ `check` + `reconcile-check` 验证。
-4. 以后每月和支付宝/微信一起上传即可全自动。
+1. 各银行 App 导出交易明细，放到 `raw/`，建议文件名带行名方便辨认（如 `建行-交易明细.xls`、`招行-储蓄卡.csv`）。
+2. **先干跑**（只写 `.planning/`，不动正式账本）：
 
-> 在接入完成前，银行卡继续用**半追踪**：每月把 App 真实余额填进 `config/actual_balances.yaml`
-> （模板已生成），跑 `venv/Scripts/python src/finance.py reconcile` 做账实核对。
+```bash
+venv/Scripts/python src/import_bank.py --bank ccb --dry-run "raw/建行-交易明细.xls"
+venv/Scripts/python src/import_bank.py --bank cmb --dry-run "raw/招行-储蓄卡.csv"
+venv/Scripts/python src/import_bank.py --bank icbc --dry-run "raw/工行-借记卡.csv"
+```
+
+3. 看笔数与"平衡 ✅"，然后正式导入（自动刷新 Paisa include + 跑 check）：
+
+```bash
+venv/Scripts/python src/import_bank.py --bank ccb "raw/建行-交易明细.xls"
+vendor/paisa/paisa.exe update --config paisa_test/paisa.yaml
+venv/Scripts/python scripts/reconcile-check.py     # 全绿才算完成
+```
+
+4. 首次导入后把高频商户补进 `config/<bank>.yaml` 的 rules（deg 匹配字段 `peer/item/type/method`，
+   后命中覆盖先命中），下次导入就自动分类。
+
+> 说明：脚本会自动带上 `tools/zoneinfo.zip`（Windows 缺 tzdata，招行信用卡解析时区会用到），
+> 无需手工设置；同一批文件重名时输出自动加序号。
 
 ## C. 做完之后的自检
 

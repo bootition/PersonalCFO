@@ -13,6 +13,7 @@
 """
 import argparse
 import csv
+import os
 import shutil
 import subprocess
 import sys
@@ -315,7 +316,8 @@ def import_bills():
                 [str(DEG), "translate", "-p", platform, "-t", "ledger",
                  "--config", str(ROOT / cfg), *deg_extra,
                  str(tmp), "-o", str(out_file)],
-                capture_output=True)
+                capture_output=True,
+                env={**os.environ, "ZONEINFO": str(ROOT / "tools" / "zoneinfo.zip")})
             if tmp != bill:
                 tmp.unlink(missing_ok=True)
             if res.returncode != 0:
