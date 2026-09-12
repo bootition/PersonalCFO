@@ -7,7 +7,9 @@
 *.bat
 
 # ── 外部工具与底座（本地保留，另行管理；仅根目录） ──
-/tools/
+/tools/*
+# 例外：银行导入需要的时区库（Windows 无 tzdata，deg 解析时区用；小体积、必须随仓库分发）
+!/tools/zoneinfo.zip
 /vendor/
 /reference/
 /archive/

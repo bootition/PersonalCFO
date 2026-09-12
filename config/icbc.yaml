@@ -1,0 +1,30 @@
+# 工商银行（ICBC，借记卡/信用卡自动识别）账单 → hledger journal
+# 用途：venv/Scripts/python src/import_bank.py --bank icbc raw/<工行账单>
+# 说明（P7.22 预置）：默认全部落到 FIXME，先干跑再正式导入；首次导入后按实际商户补规则。
+defaultMinusAccount: Assets:银行存款:工商银行
+defaultPlusAccount: Expenses:FIXME
+defaultCashAccount: Assets:银行存款:工商银行
+defaultCurrency: CNY
+title: PersonalCFO 工商银行
+
+icbc:
+  rules:
+    # ── 收入 ──
+    - type: 收入
+      targetAccount: Income:其他收入
+    - peer: 利息
+      targetAccount: Income:利息收入
+
+    # ── 自有账户互转（首次导入后核对是否与支付宝/微信侧重复）──
+    - peer: 支付宝
+      targetAccount: Assets:现金:支付宝
+    - peer: 微信,财付通
+      sep: ","
+      targetAccount: Assets:现金:微信
+
+    # ── 常见支出 ──
+    - peer: 手续费,年费,账户管理费
+      sep: ","
+      targetAccount: Expenses:日常缴费
+
+    # ── 未识别：保持 FIXME（默认规则），不做猜测 ──
