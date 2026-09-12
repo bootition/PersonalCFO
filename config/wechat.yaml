@@ -136,3 +136,9 @@ wechat:
       method: 零钱通
       targetAccount: Assets:现金:零钱通
       methodAccount: Assets:投资:基金
+
+    # ══ 用户定性（P7.21，2026-09-12 用户确认）══
+    # 邱景衡转入 = 生活费（仅收入方向；转出保持 FIXME）
+    - type: 收入
+      peer: 邱景衡
+      targetAccount: Income:生活费

@@ -238,3 +238,15 @@ alipay:
     - item: 转出至余额宝
       targetAccount: Assets:现金:余额宝
       methodAccount: Assets:投资:基金
+
+    # ══ 用户定性（P7.21，2026-09-12 用户确认）══
+    # 课程分期/首付（12 笔）→ 书籍学习
+    - peer: 单挑啊
+      targetAccount: Expenses:书籍学习
+    # 每月固定充值（4 笔）→ 校园卡/饭卡 → 日常三餐
+    - item: 充值-普通充值
+      targetAccount: Expenses:日常三餐
+    # 家人转入的生活费
+    - type: 收入
+      peer: 邱景衡
+      targetAccount: Income:生活费
