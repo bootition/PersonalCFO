@@ -154,8 +154,11 @@ def main():
                      f"{res.stderr.decode('utf-8', errors='replace')[:300]}")
         print(f"已写入 {out.name}")
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from finance import check  # noqa: E402
+        from finance import check, refresh_paisa_includes  # noqa: E402
         check()
+        # P7.21：自动维护 Paisa 合并入口，避免"忘了加 include 导致口径分裂"
+        refresh_paisa_includes()
+        print("已刷新 paisa_test/all.journal include（可直接 paisa update）")
     else:
         print("\n── 分录草稿（--write 才写入）──")
         print("\n".join(lines))
