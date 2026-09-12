@@ -70,13 +70,17 @@ vendor/paisa/paisa.exe serve --config paisa_test/paisa.yaml   # 日常查账入�
 
 > Windows 下直接跑 `paisa.exe update` 需 `tools/hledger-bin` 在 PATH；双击 bat 已自动处理。
 
-## 5. 账本仓提交（约 1 分钟）
+## 5. 账本仓提交 + 加密备份（约 3 分钟）
 
 ```bash
 cd journals && git add -A && git commit -m "monthly: YYYY-MM 导入+对账" && cd ..
+venv/Scripts/python scripts/backup.py backup
+venv/Scripts/python scripts/backup.py verify backups/personalcfo-<最新>.pcfobak
 ```
 
 > `journals/bak/` 是历史备份，可不必提交；提交前 `git status` 自查无敏感文件（raw/、reports/、close/ 均被忽略）。
+> 加密备份覆盖 journals/raw/reports/close/config/paisa.db，密码在 `config/backup_secret.txt`（gitignore，务必抄进密码管理器）；详见 `runbooks/03_备份与恢复.md`。
+> 任何破坏性操作（reset_init、批量改账本、升级 fork）之前**必须先 backup**。
 
 ## 6. 季末加做（约 10 分钟）
 
