@@ -290,6 +290,53 @@ IMPORT_JOBS = [
      ["--ignore-invalid-tx-types"]),  # 理财通赎回等 deg 未收录类型靠规则原文匹配
 ]
 
+# P7.23：银行账单按文件名关键字路由（见 src/import_bank.py 的干跑工具）
+BANK_PATTERNS = [
+    ("ccb", ("建行", "ccb")),
+    ("cmb", ("招行", "招商银行", "cmb")),
+    ("icbc", ("工行", "工商银行", "icbc")),
+]
+BANK_UNSUPPORTED = ("光大", "ceb")
+
+
+def import_bank_bills(raw_dir: Path = RAW_DIR, journals_dir: Path = JOURNALS_DIR) -> int:
+    """raw/ 下按文件名含行名关键字的银行账单 → deg 对应 provider → journals/import-<bank>-*.journal。
+
+    P7.23：让 UI 上传（保存到 raw/ 后调用 `finance.py import`）也能处理银行账单；
+    文件名需带行名，例如「建行-交易明细.xls」「招行-储蓄卡.csv」「工行-借记卡.csv」。
+    返回成功导入的份数。dry-run 请用 src/import_bank.py。
+    """
+    count = 0
+    handled = set()
+    for bank, keywords in BANK_PATTERNS:
+        bills = [f for f in sorted(raw_dir.glob("*")) if f.is_file()
+                 and any(k.lower() in f.name.lower() for k in keywords)]
+        for bill in bills:
+            handled.add(bill.name)
+            out_file = journals_dir / f"import-{bank}-{bill.stem}.journal"
+            subprocess.run(["chcp.com", "65001"], stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, check=False)
+            res = subprocess.run(
+                [str(DEG), "translate", "-p", bank, "-t", "ledger",
+                 "--config", str(ROOT / f"config/{bank}.yaml"),
+                 str(bill), "-o", str(out_file)],
+                capture_output=True,
+                env={**os.environ, "ZONEINFO": str(ROOT / "tools" / "zoneinfo.zip")})
+            if res.returncode != 0:
+                print(f"[失败] {bill.name}（{bank}）："
+                      f"{res.stderr.decode('utf-8', errors='replace')[:200]}")
+                continue
+            text = out_file.read_text(encoding="utf-8") if out_file.exists() else ""
+            txs = sum(1 for line in text.splitlines() if line[:4].isdigit() and "/" in line[:10])
+            print(f"已导入 {bill.name} -> {out_file.name}（银行 {bank}，{txs} 笔）")
+            count += 1
+    # 未支持银行（如光大）提醒，避免用户以为"上传了但没反应"
+    for f in sorted(raw_dir.glob("*")):
+        if f.is_file() and f.name not in handled \
+                and any(k in f.name.lower() for k in BANK_UNSUPPORTED):
+            print(f"[注意] {f.name} 看起来是未支持的银行账单，需单独转换（见 docs/runbooks/04 §B）")
+    return count
+
 
 def import_bills():
     """raw/ 下的支付宝 CSV / 微信 XLSX → deg → journals/import-*.journal，逐平台冒烟。"""
@@ -335,6 +382,9 @@ def import_bills():
                 print(f"   行数归因: 源 {src_rows} 行 → journal {s['txs']} 笔；{attr}")
             if platform == "alipay":
                 alipay_outputs.append(out_file)
+    # P7.23：银行账单（建行/招行/工行），UI 上传与 CLI 导入共用这一条路径
+    if import_bank_bills():
+        any_import = True
     if not any_import:
         print("raw/ 下没有可导入账单")
         return
