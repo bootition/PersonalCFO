@@ -25,6 +25,9 @@ wechat:
       ignore: true
     - txType: 退款
       ignore: true
+    # 献祭行/真实关闭单：交易关闭一律丢弃（与支付宝口径一致）
+    - status: 交易关闭
+      ignore: true
 
     # ══ L1 宽 type ══
     - type: 收入

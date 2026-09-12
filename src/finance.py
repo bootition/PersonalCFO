@@ -251,6 +251,37 @@ def preprocess_alipay(bill: Path) -> Path:
     return tmp
 
 
+# deg v2.15.1 微信 XLSX 读取器硬编码跳过前 18 行（16 行元信息 + 第 17 行表头），
+# 而数据从第 18 行开始 → 第一条数据必被吞。对策：表头后插入献祭行（交易关闭 → L0 丢弃）。
+DUMMY_WECHAT_ROW = [
+    "1970-01-01 00:00:00", "其他", "占位", "deg首行吞行占位(献祭行)", "支出",
+    "0.01", "余额", "交易关闭", "", "", "",
+]
+
+
+def preprocess_wechat(bill: Path) -> Path:
+    """生成插入献祭行的临时 XLSX，返回临时文件路径（表头后插一行）。"""
+    from openpyxl import load_workbook
+
+    tmp = bill.with_name(f".deg-tmp-{bill.name}")
+    wb = load_workbook(bill)
+    ws = wb["Sheet1"] if "Sheet1" in wb.sheetnames else wb.worksheets[0]
+    header_row = None
+    for i, row in enumerate(ws.iter_rows(min_row=1, max_row=40, values_only=True), start=1):
+        if row and str(row[0]).strip() == "交易时间":
+            header_row = i
+            break
+    if header_row is None:
+        wb.close()
+        return bill  # 格式不符，交给 deg 原样处理/报错
+    ws.insert_rows(header_row + 1)
+    for col, value in enumerate(DUMMY_WECHAT_ROW, start=1):
+        ws.cell(row=header_row + 1, column=col, value=value)
+    wb.save(tmp)
+    wb.close()
+    return tmp
+
+
 # 各平台导入任务：pattern 匹配 raw/ 下账单；deg_extra 为该 provider 的额外参数
 IMPORT_JOBS = [
     ("alipay", "支付宝交易明细*.csv", "config/alipay.yaml", []),
@@ -272,7 +303,12 @@ def import_bills():
             any_import = True
             out_file = JOURNALS_DIR / f"import-{platform}-{bill.stem}.journal"
             src_rows = count_source_rows(platform, bill)
-            tmp = preprocess_alipay(bill) if platform == "alipay" else bill
+            if platform == "alipay":
+                tmp = preprocess_alipay(bill)
+            elif platform == "wechat":
+                tmp = preprocess_wechat(bill)
+            else:
+                tmp = bill
             subprocess.run(["chcp.com", "65001"], stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, check=False)
             res = subprocess.run(
@@ -289,7 +325,7 @@ def import_bills():
             unprocessed = err.count("unprocessed")
             print(f"已导入 {bill.name} -> {out_file.name}"
                   f"（deg 日志：退款配对 {pairs} 次；保留但提示 {unprocessed} 条；"
-                  f"献祭行{'已被吞(R1对策生效)' if platform == 'alipay' and '吞行占位' not in out_file.read_text(encoding='utf-8') else '留存检查'}）")
+                  f"献祭行{'已被吞(对策生效)' if platform in ('alipay', 'wechat') and '吞行占位' not in out_file.read_text(encoding='utf-8') else '留存检查'}）")
             report, s = smoke_report(platform, out_file, src_rows)
             print(report)
             attr = attribute_drops(platform, bill, out_file, err)
