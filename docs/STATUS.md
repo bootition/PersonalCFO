@@ -52,7 +52,8 @@ last_reviewed: 2026-09-09
 | **P7.15 报表自洽复核（P3-6 完成）**（2026-09-12） | ✅ 新增 `scripts/reconcile-check.py`（直读 hledger，不经过 Paisa DB）：①`check balanced ordereddates` 通过；②**14 个月末借贷恒等最大偏差 0.00**；③财年 2025-26 / 2026-27 收入与支出对 `/api/income_statement` 差 **0.00**；④期初分录平衡且 `Equity:期初调整` = −(资产+负债)；⑤FIXME 2 科目、占绝对余额 6.93%（明细在本地 `.planning/reconcile-report.json`）。报告 `docs/reports/07_P7.15报表自洽复核_2026-09-12.md`；本次未改账本数据 | main `73b38f5`（本地待推） |
 | **P7.16 月度 SOP 实操（P3-7 完成）**（2026-09-12） | ✅ 按 `runbooks/01` 全链路实操：导入（支付宝 1957/微信 321、未解释 0、花呗 97.36%）→ 自检（reconcile-check 全过）→ 账实核对（**首次运行自动生成 17 科目模板**；以账面当实盘验证 13 科目差异全 +0.00、"无需调账"，随后还原模板）→ include 5==5 + `paisa update` → 账本仓提交 → 财报 4 份 PDF → forecast → **close 2026 H1**（快照+结转分录；结账后 `check balanced` rc=0、恒等 delta −0.0）→ `reopen` 清理（期初在 9/10，Apr-Jun 结账为时过早，验证后回滚）。**修复 `close` 提示命令 bug**（原指向不存在的 `journals/2026.journal`，改为按实际文件列表打印）；SOP 手册更新（章节编号/导入后自检/对账模板/结账自验/首个结账期须晚于期初）。用户阻塞：FIXME 定性、真实余额盘点、Wealthfolio 回写 | main `eb21a50`（本地待推） |
 | **P7.17 账本备份方案（P3-8 完成）**（2026-09-12） | ✅ 新增 `scripts/backup.py`：AES-256-GCM 加密归档（PBKDF2 600k）覆盖 journals/raw/reports/close/config/paisa.db/敏感信息文件 + `MANIFEST.json`（逐文件 sha256 + 双仓 git 哈希）；子命令 `backup / verify / restore / list`，默认保留 10 份、自动排除密码文件。**实测**：325 文件 22.2MB → 归档 5.9MB；`verify` 清单与 sha256 全部一致 + 恢复演练 `hledger check balanced` rc=0；错误密码被拒绝；`restore` 成功解出 5 个 journal 与 db/raw；归档不含 `backup_secret.txt`（含 raw 与 db）。新增 `runbooks/03_备份与恢复.md`（三层策略/密码管理/RTO≈5min/恢复流程/演练证据），并接入月度 SOP 步骤 5（提交后 backup+verify；破坏性操作前必须先备份）；`.gitignore` 排除 `backups/` 与 `config/backup_secret.txt` | main `96ece7a` |
-| **P7.18 Paisa fork 远程仓库（P3-9 完成）**（2026-09-12） | ✅ 私有仓 `bootition/PersonalCFO-paisa` 建立：①快照分支 `master`（`a7515c4`，对应本地 `vendor/paisa@4897759`，`git archive` 干净树，无构建产物）；②Release `fork-2026-09-12` 上传完整历史 bundle `paisa-fork-20260912.bundle`（6.18MB、31 个提交、`git bundle verify` 通过）；③本地 `upstream` 指向 ananthakumaran/paisa 供升级 diff。**限制披露**：`vendor/paisa/.git` 是浅克隆且 gc 后存在缺失对象，直接 push 会 `index-pack failed`（远端收不到完整包），故走"快照 + bundle"；恢复方法已写入 `runbooks/03` 第 7 节 | main 待提交（本地） |
+| **P7.18 Paisa fork 远程仓库（P3-9 完成）**（2026-09-12） | ✅ 私有仓 `bootition/PersonalCFO-paisa` 建立：①快照分支 `master`（`a7515c4`，对应本地 `vendor/paisa@4897759`，`git archive` 干净树，无构建产物）；②Release `fork-2026-09-12` 上传完整历史 bundle `paisa-fork-20260912.bundle`（6.18MB、31 个提交、`git bundle verify` 通过）；③本地 `upstream` 指向 ananthakumaran/paisa 供升级 diff。**限制披露**：`vendor/paisa/.git` 是浅克隆且 gc 后存在缺失对象，直接 push 会 `index-pack failed`（远端收不到完整包），故走"快照 + bundle"；恢复方法已写入 `runbooks/03` 第 7 节 | main `a34db70` |
+| **P7.19 P6 红队三个小缺口收口**（2026-09-12） | ✅ ①**组级裸路径不再 404**：`/cash_flow`→利润表、`/assets`→余额、`/liabilities`→余额、`/expense`→月度、`/ledger`→流水、`/more`→设置（各 `+page.ts` redirect；实测 6/6 跳转正确，隔离端口 7600 验证）；②**上传 200MB 上限**：`http.MaxBytesReader` + 413 中文提示（实测 210MB → HTTP 413，`raw/` 无污染）；③**注释 HTML 转义**：`formatTextAsHtml` 先 `escapeHtml` 再转 `<br/>`，账本注释进 tippy 不再解析 HTML；④`scripts/e2e-sweep.py` 动态忽略编辑器接口返回的账本数据词（文件名/科目/对方），**31 路由 0 失败**；STATUS 缺口 #10–#12 标记已修复 | fork 待提交（本地） |
 | P1.4 银行全自动导入 | ⏸ 暂缓（用户决定，先半追踪模式） | — |
 | 账本私仓 PersonalCFO-ledger | ⏸ 暂缓（本地 git 先用） | — |
 
@@ -69,9 +70,9 @@ last_reviewed: 2026-09-09
 7. **花呗拆分残余（P7.14 后）**：脚本已自动分类——退款已入账 4/亲情卡·代付 11/期外还款 1 不再误报；剩余 **PDF 侧 6 笔（合计 17.41 元）+ 账单侧 5 笔（4 笔美团 70.69 元 + 0.01 元）**。用户决定：因支付宝账单截止日早于花呗账单，先不手工处理，待导入最新账单后自然匹配（清单在本地 `reports/huabei-split-*.txt`）。
 8. forecast 应急金覆盖月数在期初建账（P1.5）前为净流量口径（可能为负），仅作流程演示。
 9. Paisa 无 UI 语言 i18n 机制（localization.md 仅数字格式），中文化需直改 Svelte 字符串（已用提交 `ce7b802` 沉淀，上游升级时按文件处理冲突）。
-10. （P6 红队 P2-1）组级裸路径 `/cash_flow` 直接访问 404；建议组首页重定向到首个子页或给出 landing（正常 UI 不导航到裸路径，不阻断）。
-11. （P6 红队 P2-2）上传端点无显式大小上限（100MB 实测可传）；建议服务端加 MaxBytesReader 上限（如 200MB）+ 友好报错（本地单用户风险低，不阻断）。
-12. （P6 红队 P2-3）既有 tippy `allowHTML` 会对账本注释做 HTML 解析（hover 触发，非 P6 引入）；建议改纯文本 tooltip 或消毒（不阻断）。
+10. ✅ **已修复（P7.19）**（P6 红队 P2-1）组级裸路径 404：`/cash_flow`、`/assets`、`/liabilities`、`/expense`、`/ledger`、`/more` 现在重定向到各自首页（`+page.ts` redirect，实测 6/6）。
+11. ✅ **已修复（P7.19）**（P6 红队 P2-2）上传端点加 200MB 上限（`http.MaxBytesReader` + 413 中文提示；实测 210MB 被拒且 raw/ 无污染）。
+12. ✅ **已修复（P7.19）**（P6 红队 P2-3）账本注释进 tippy 前先 `escapeHtml`（`formatTextAsHtml`），不再解析用户数据里的 HTML。
 13. （P7 红队 P2-1）LegendCard 图例 swatch 仍用 `texture`（14px 色块，非图表整底，无黑底风险）；建议随下一次图表迭代清理。
 14. （P7 红队 P2-4，观察项）deg 合成账单吞表头后约 15 行（支付宝已插献祭行、微信未插）；不影响平衡与 UI，上游修复后回归探针。
 
