@@ -492,7 +492,9 @@ def close(year: int, period: str):
     close_file = CLOSE_DIR / f"{year}-{period}-close.journal"
     close_file.write_text(closing, encoding="utf-8")
     print(f"结账完成：快照 {snap_dir}；结转分录 {close_file.name}（后续财报如需'结账后'口径，运行：")
-    print(f"  hledger -I -f journals/2026.journal -f close/{close_file.name} <命令>")
+    files = [a for a in journal_args() if a != "-f"]
+    quoted = " ".join(f'-f "{f}"' for f in files)
+    print(f'  hledger -I {quoted} -f "{close_file}" bs')
 
 
 def reopen(year: int, period: str):
