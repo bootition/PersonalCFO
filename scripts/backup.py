@@ -176,7 +176,11 @@ def cmd_backup(args):
 
 def _prune(keep: int):
     archives = sorted(BACKUP_DIR.glob("personalcfo-*.pcfobak"), key=lambda p: p.stat().st_mtime, reverse=True)
-    for old in archives[keep:]:
+    to_delete = archives[keep:]
+    if to_delete:
+        # P7.20（红队 S2-6）：清理前先告知，避免"静默删旧归档"
+        print(f"   保留最近 {keep} 份，将删除 {len(to_delete)} 份旧归档（--keep 可调，0=不保留历史）")
+    for old in to_delete:
         old.unlink()
         print(f"   已清理旧归档 {old.name}")
 

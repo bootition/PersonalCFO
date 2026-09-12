@@ -23,8 +23,10 @@ last_reviewed: 2026-09-12
 
 ```bash
 venv/Scripts/python src/finance.py status          # imported/opening/check_ok/FIXME 规模
-venv/Scripts/python scripts/reconcile-check.py     # 月度恒等+财年勾稽+期初（需 paisa serve 供 API 对照）
+venv/Scripts/python scripts/reconcile-check.py     # 月度恒等+财年勾稽+跨源账户+期初（需 paisa serve 供 API 对照）
 ```
+
+> `reconcile-check` 默认要求 API 可用（不可用即判失败，防止静默假绿）；确需离线跑时加 `--allow-no-api`（会跳过财年/跨源核对）。
 
 - [ ] 冒烟行数归因里"未解释 0 行"（见 `finance.py import` 输出；≠0 要排查）
 - [ ] 花呗拆分报告 `reports/huabei-split-*.txt`：匹配率 ≥95%
