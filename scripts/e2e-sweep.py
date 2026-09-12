@@ -100,6 +100,22 @@ def collect_data_words(page, base_url):
         if isinstance(s, str):
             words.update(re.findall(r"[A-Za-z]{4,}", s))
 
+    def walk(o):
+        if isinstance(o, str):
+            add(o)
+        elif isinstance(o, dict):
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    try:
+        # 编辑器接口返回的是账本数据（科目/对方/journal 文件名/版本等），整棵树都算数据词
+        walk(page.request.get(base_url + "/api/editor/files").json())
+    except Exception:
+        pass
+
     try:
         # /api/transaction 返回全量交易（dashboard 只有近期），能覆盖所有对方/科目名
         trx = page.request.get(base_url + "/api/transaction").json()
