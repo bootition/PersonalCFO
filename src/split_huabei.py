@@ -268,6 +268,9 @@ class SplitResult:
     refund_reverse: list = field(default_factory=list)     # (pdf_row, 原消费tx) → 冲销
     refund_fixme: list = field(default_factory=list)
     refund_paired: int = 0  # PDF 消费+退款两侧留痕但 journal 已被 deg 双剔（自解释，非 FIXME）
+    refund_already_booked: int = 0  # PDF 退款还款，但 journal 已有同额退款分录（无需动作）
+    subaccount_expected: int = 0    # journal 侧亲情卡/代付：主花呗账单不含子账，属正常
+    out_of_period_negative: int = 0 # PDF 负数行晚于覆盖期（如下月还款），不在本期处理
 
 
 def match_all(pdf_rows, txs, coverage_end: date):
@@ -377,12 +380,29 @@ def match_all(pdf_rows, txs, coverage_end: date):
 
     res.unmatched_tx = [t for t in hb_txs if not t.matched]
 
+    # 还款类交易（借花呗）在负数行循环单独核对，不应出现在"账单无对"消费清单里
+    res.unmatched_tx = [
+        t for t in res.unmatched_tx
+        if not ("还款" in t.head
+                and any(acc == "Liabilities:花呗" and a > 0 for _, acc, a in t.postings))
+    ]
+
+    # 亲情卡/代付：花呗主账单不列子账消费，journal 有、PDF 无属正常，不计 FIXME
+    subaccount = [t for t in res.unmatched_tx if "亲情卡" in t.head or "代付" in t.head]
+    if subaccount:
+        res.unmatched_tx = [t for t in res.unmatched_tx if t not in subaccount]
+        res.subaccount_expected = len(subaccount)
+
     # ── 负数行：自动还款 / 退款还款 ──
     # 匹配池限定"还款"类借方花呗分录（防同额退款幻影核对）；容差 ±0.1（花呗金尾差）+ 同日±1
     repay_txs = [t for t in txs
                  if "还款" in t.head
                  and any(acc == "Liabilities:花呗" and a > 0 for _, acc, a in t.postings)]
     for r in negatives:
+        if r.day > coverage_end:
+            # 如下月账单的自动还款：不属于本期，天然无 journal 对应
+            res.out_of_period_negative += 1
+            continue
         if "自动还款" in r.name or "主动还款" in r.name:
             hit = next((t for t in repay_txs
                         if abs((t.day - r.day).days) <= 1
@@ -393,7 +413,18 @@ def match_all(pdf_rows, txs, coverage_end: date):
             else:
                 res.repay_create.append(r)
         elif "退款还款" in r.name:
-            # 先判"deg 已双剔"：同额 PDF 消费行也未匹配（±45 天）→ 两侧留痕、无需动作
+            # 先判：journal 已有一笔同额"退款"分录（deg 已把退款入账）→ 无需动作
+            booked = any(
+                "退款" in t.head
+                and abs((t.day - r.day).days) <= 7
+                and any(acc == "Liabilities:花呗" and abs(a - abs(r.amount)) < 0.005
+                        for _, acc, a in t.postings)
+                for t in txs
+            )
+            if booked:
+                res.refund_already_booked += 1
+                continue
+            # 再判"deg 已双剔"：同额 PDF 消费行也未匹配（±45 天）→ 两侧留痕、无需动作
             pair = next((pr for pr in res.unmatched_pdf
                          if abs(pr.amount - abs(r.amount)) < 0.005
                          and abs((pr.day - r.day).days) <= 60), None)
@@ -500,8 +531,8 @@ def main():
         f"匹配率: {rate:.2f}%（{'✅ ≥95%' if rate >= 95 else '⚠️ <95%'}）",
         f"  组合支付拆分: {len(res.splits)}  纯花呗验证: {res.verified_pure}  金额异常: {len(res.pure_amount_mismatch)}",
         f"  PDF 有账单无（期内，FIXME）: {len(res.unmatched_pdf)}  期外（下月再配）: {len(res.out_of_period_pdf)}",
-        f"  账单有 PDF 无（FIXME）: {len(res.unmatched_tx)}",
-        f"  自动还款核对一致: {res.repay_verify}  补录: {len(res.repay_create)}  退款冲销: {len(res.refund_reverse)}  退款配对留痕(deg双剔): {res.refund_paired}  退款待人工: {len(res.refund_fixme)}",
+        f"  账单有 PDF 无（FIXME）: {len(res.unmatched_tx)}  （另有亲情卡/代付 {res.subaccount_expected} 笔属正常：主账单不含子账）",
+        f"  自动还款核对一致: {res.repay_verify}  补录: {len(res.repay_create)}  期外还款: {res.out_of_period_negative}  退款冲销: {len(res.refund_reverse)}  退款配对留痕(deg双剔): {res.refund_paired}  退款已入账: {res.refund_already_booked}  退款待人工: {len(res.refund_fixme)}",
         "",
         "── FIXME 明细 ──",
     ]
