@@ -19,11 +19,22 @@
 退出码：0 = 全部通过；1 = 有失败项（详见输出与 --report JSON）。
 """
 import argparse
+import datetime
 import json
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
+
+
+def _git_head():
+    try:
+        r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                           cwd=Path(__file__).resolve().parent.parent)
+        return r.stdout.strip() if r.returncode == 0 else "unknown"
+    except Exception:  # noqa: BLE001
+        return "unknown"
 
 try:
     from playwright.sync_api import sync_playwright
@@ -59,7 +70,16 @@ EN_ALLOW = {
     "JOURNAL", "JOURNALS", "INCLUDE", "IMPORT", "OPENING", "FIXED", "ACCOUNT", "PAYEE", "RECURRING",
 }
 # 合法空状态：短文本但包含以下词即视为"有说明"
-EMPTY_OK = ("没有", "暂无", "尚未", "为空", "无负债", "不适用", "迁移", "初始化", "未配置", "无数据")
+EMPTY_OK = ("没有", "暂无", "尚未", "为空", "无负债", "不适用", "迁移", "初始化", "未配置", "无数据", "正在跳转")
+# 常见英文 UI 词（大小写敏感）：即使与用户数据重名也一律判失败，防止白名单掩盖真英文
+UI_STRICT = {
+    "Dashboard", "Transactions", "Transaction", "Settings", "Search", "Filter", "Save", "Cancel",
+    "Delete", "Edit", "Login", "Logout", "Username", "Password", "Loading", "Error", "Date",
+    "Amount", "Note", "Type", "Status", "Account", "Payee", "Split", "Total", "Price", "Quantity",
+    "Value", "Name", "Category", "From", "To", "Yes", "No", "All", "None", "Overview",
+    "Performance", "Holdings", "Activity", "Insights", "Goals", "Health", "Report", "Chart",
+    "Table", "Help", "About", "Recurring", "Budget", "Import", "Export",
+}
 
 
 def text_of(page):
@@ -70,14 +90,18 @@ def text_of(page):
 
 
 def english_words(text, data_words=None):
-    # 先剔除科目路径（Assets:... / Liabilities:...）与用户数据（对方/持仓名/时区枚举）
+    # 剔除科目路径（Assets:...）、文件名/路径（含 . _ - / 的 token）等技术性文本
     cleaned = re.sub(r"\b(?:Assets|Liabilities|Income|Expenses|Equity):[^\s]+", " ", text)
+    cleaned = re.sub(r"\S*[._\-/\\]\S*", " ", cleaned)
     words = set(re.findall(r"[A-Za-z]{4,}", cleaned))
     data = {w.upper() for w in (data_words or set())}
-    return sorted(
+    normal = [
         w for w in words
         if w.upper() not in EN_ALLOW and w.upper() not in data and not re.fullmatch(r"[A-Z]{2,}", w)
-    )
+    ]
+    # 严格词优先：不管是否在数据/白名单里，出现即报（大小写敏感）
+    strict = [w for w in re.findall(r"[A-Za-z]{2,}", cleaned) if w in UI_STRICT]
+    return sorted(set(normal) | set(strict))
 
 
 def is_blank(txt):
@@ -191,6 +215,9 @@ def main():
         # 1) 可见页面
         for r in VISIBLE_ROUTES:
             txt, item = visit(r)
+            if "页面不存在" in txt or "出错了" in txt:
+                # 可见路由渲染成错误页 = 路由缺失/组件崩，必须算失败（红队 S2-4）
+                failures.append(f"{r}: 命中错误页（路由缺失或渲染失败）")
             words = [] if r in TECHNICAL_ROUTES else english_words(txt, data_words)
             item["english"] = words
             item["technical_page"] = r in TECHNICAL_ROUTES
@@ -243,7 +270,13 @@ def main():
 
         browser.close()
 
-    report = {"base_url": args.base_url, "failures": failures, "results": results}
+    report = {
+        "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "git_head": _git_head(),
+        "base_url": args.base_url,
+        "failures": failures,
+        "results": results,
+    }
     Path(args.report).parent.mkdir(parents=True, exist_ok=True)
     Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 

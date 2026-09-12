@@ -110,6 +110,8 @@ def main():
     ap.add_argument("--journal", default="paisa_test/all.journal")
     ap.add_argument("--opening", default="journals/2026-09-10-opening.journal")
     ap.add_argument("--api", default="http://localhost:7500")
+    ap.add_argument("--allow-no-api", action="store_true",
+                    help="API 不可用时允许跳过财年/跨源核对（默认不允许，避免静默假绿）")
     ap.add_argument("--report", default=".planning/reconcile-report.json")
     args = ap.parse_args()
 
@@ -134,17 +136,33 @@ def main():
         delta = round(g["Assets"] + g["Liabilities"] + g["Equity"] + g["Income"] + g["Expenses"], 2)
         deltas.append({"end": end.isoformat(), "delta": delta})
     max_delta = max((abs(d["delta"]) for d in deltas), default=0.0)
+    months_with_data = 0
+    for end in month_ends(first, today):
+        g = group_sums(balance_map(journal, end=end.isoformat()))
+        if any(abs(v) > 0.005 for v in g.values()):
+            months_with_data += 1
     report["identity"] = {"months": len(deltas), "max_abs_delta": max_delta,
+                          "months_with_data": months_with_data,
                           "first": deltas[0] if deltas else None, "last": deltas[-1] if deltas else None}
     if max_delta > 0.005:
         failures.append(f"月度恒等式最大偏差 {max_delta}")
+    # 覆盖度断言：样本太少/无数据时不允许"通过"（红队 S2-3）
+    if len(deltas) < 6:
+        failures.append(f"月度恒等样本过少（{len(deltas)} 个月末，应 ≥6）")
+    if months_with_data < 3:
+        failures.append(f"有数据的月末过少（{months_with_data}，应 ≥3；可能读错账本）")
 
     # 3) 财年勾稽（hledger vs Paisa API）
     api = None
+    api_error = None
     try:
         api = fetch_json(args.api + "/api/income_statement")
     except Exception as e:  # noqa: BLE001
-        report["fy"] = {"skipped": f"API 不可用：{e}"}
+        api_error = str(e)
+    if api_error:
+        report["fy"] = {"skipped": f"API 不可用：{api_error}"}
+        if not args.allow_no_api:
+            failures.append(f"财年勾稽无法执行（API 不可用：{api_error[:80]}）；如确需跳过加 --allow-no-api")
     if api:
         yearly = api.get("yearly", {})
         checks = []
@@ -166,6 +184,47 @@ def main():
         for c in checks:
             if abs(c["income_delta"]) > 0.01 or abs(c["expense_delta"]) > 0.01:
                 failures.append(f"财年 {c['fy']} 勾稽不一致：收入差 {c['income_delta']} / 支出差 {c['expense_delta']}")
+
+    # 3.5) 跨源账户余额核对（Paisa API 的 DB 口径 vs hledger 直读；红队 S2-3）
+    if api is not None:
+        try:
+            assets = fetch_json(args.api + "/api/assets/balance").get("asset_breakdowns", {}) or {}
+            liabs = fetch_json(args.api + "/api/liabilities/balance").get("liability_breakdowns", []) or []
+        except Exception as e:  # noqa: BLE001
+            failures.append(f"跨源账户核对取数失败：{e}")
+        else:
+            led = balance_map(journal)
+            checked, mismatches = 0, []
+            all_names = set(assets.keys()) | {a for a, _ in
+                (list(liabs.items()) if isinstance(liabs, dict) else [(i.get("group"), i) for i in liabs])}
+            def is_leaf(acc):
+                return not any(o != acc and o.startswith(acc + ":") for o in all_names)
+            for acc, item in assets.items():
+                # 只比现金/银行等无估值口径的科目（投资科目 hledger 是成本价，API 是市值）
+                if not acc.startswith(("Assets:现金", "Assets:银行存款")) or not is_leaf(acc):
+                    continue
+                api_amt = abs(round(float(item.get("marketAmount", 0.0) or 0.0), 2))
+                led_amt = abs(round(led.get(acc, 0.0), 2))
+                checked += 1
+                if abs(api_amt - led_amt) > 0.01:
+                    mismatches.append(acc)
+            liab_items = (
+                list(liabs.items()) if isinstance(liabs, dict)
+                else [(i.get("group"), i) for i in liabs]
+            )
+            for acc, item in liab_items:
+                if not is_leaf(acc):
+                    continue
+                api_amt = abs(round(float(item.get("balance_amount", 0.0) or 0.0), 2))
+                led_amt = abs(round(led.get(acc, 0.0), 2))
+                checked += 1
+                if abs(api_amt - led_amt) > 0.01:
+                    mismatches.append(acc)
+            report["cross_source"] = {"checked": checked, "mismatches": len(mismatches)}
+            if checked < 3:
+                failures.append(f"跨源账户核对样本过少（{checked}，应 ≥3）")
+            if mismatches:
+                failures.append(f"跨源账户余额不一致 {len(mismatches)} 个：{mismatches[:3]}")
 
     # 4) 期初分录
     if opening.exists():
@@ -197,13 +256,19 @@ def main():
 
     print("══ 报表自洽复核 ══")
     print(f"  hledger check: {'✅' if report['hledger_check']['ok'] else '❌'}")
-    print(f"  月度恒等:     {'✅' if max_delta <= 0.005 else '❌'}  {len(deltas)} 个月末，最大偏差 {max_delta}")
+    print(f"  月度恒等:     {'✅' if max_delta <= 0.005 else '❌'}  {len(deltas)} 个月末（有数据 {months_with_data}），最大偏差 {max_delta}")
     if isinstance(report.get("fy"), list):
         for c in report["fy"]:
             okmark = "✅" if abs(c["income_delta"]) <= 0.01 and abs(c["expense_delta"]) <= 0.01 else "❌"
             print(f"  财年 {c['fy']}: {okmark} 收入差 {c['income_delta']} / 支出差 {c['expense_delta']}")
     else:
         print(f"  财年勾稽:     跳过（{report.get('fy', {}).get('skipped')}）")
+    if "checked" in report.get("cross_source", {}):
+        cs = report["cross_source"]
+        print(f"  跨源账户:     {'✅' if cs['mismatches'] == 0 and cs['checked'] >= 3 else '❌'}"
+              f"  核对 {cs['checked']} 个现金/银行/负债科目，不一致 {cs['mismatches']} 个")
+    else:
+        print("  跨源账户:     跳过")
     if "total" in report.get("opening", {}):
         o = report["opening"]
         print(f"  期初分录:     {'✅' if abs(o['total']) <= 0.005 and abs(o['equity'] - o['expected_equity']) <= 0.005 else '❌'}"
