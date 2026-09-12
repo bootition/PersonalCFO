@@ -64,15 +64,18 @@ venv/Scripts/python scripts/reconcile-check.py     # 全绿才算完成
 ### B2. 现状（重要）
 
 - 已原生支持：**支付宝 CSV、微信 XLSX、花呗 PDF**（自动导入+拆分）。
-- **银行已预置**（P7.22）：建行 `ccb`、招行 `cmb`、工行 `icbc` 三家的 provider + 配置 + 独立导入命令，
+- **银行已接入**（P7.22/P7.23）：建行 `ccb`、招行 `cmb`、工行 `icbc` 三家 provider + 配置，
   用 deg 官方示例账单实测通过（建行 xls 7 笔、招行借记 6 笔/信用卡 7 笔、工行借记 12 笔/信用卡 10 笔，全部平衡）。
-- 光大银行：deg 没有内置 provider，需要单独转换（把你的导出样例发我，我写一个转换器或规则）。
+- **命名约定**：文件名带行名即可被自动路由——`建行/ccb`、`招行/招商银行/cmb`、`工行/工商银行/icbc`
+  （如 `建行-交易明细.xls`、`招行-储蓄卡.csv`）。**UI 上传与 CLI 导入都走这条规则**。
+- 光大银行：deg 没有内置 provider，上传时会提示"需单独转换"；把导出样例发我即可补。
 - 银行配置默认**全部落 FIXME**（不猜科目）；第一次导入后按冒烟报告补 `config/<bank>.yaml` 规则。
 
 ### B3. 接入步骤（现在就能做）
 
-1. 各银行 App 导出交易明细，放到 `raw/`，建议文件名带行名方便辨认（如 `建行-交易明细.xls`、`招行-储蓄卡.csv`）。
-2. **先干跑**（只写 `.planning/`，不动正式账本）：
+1. 各银行 App 导出交易明细，放到 `raw/`（或直接在「初始化 → ① 上传账单」里多选上传），
+   文件名带行名方便辨认与路由（如 `建行-交易明细.xls`、`招行-储蓄卡.csv`、`工行-借记卡.csv`）。
+2. **首次建议先干跑**（只写 `.planning/`，不动正式账本）：
 
 ```bash
 venv/Scripts/python src/import_bank.py --bank ccb --dry-run "raw/建行-交易明细.xls"
@@ -80,7 +83,9 @@ venv/Scripts/python src/import_bank.py --bank cmb --dry-run "raw/招行-储蓄�
 venv/Scripts/python src/import_bank.py --bank icbc --dry-run "raw/工行-借记卡.csv"
 ```
 
-3. 看笔数与"平衡 ✅"，然后正式导入（自动刷新 Paisa include + 跑 check）：
+3. 看笔数与"平衡 ✅"，然后二选一：
+   - **UI**：`初始化 → ① 上传账单` 直接上传（`finance.py import` 会按文件名自动路由银行账单）；
+   - **CLI**：正式导入（自动刷新 Paisa include + 跑 check）：
 
 ```bash
 venv/Scripts/python src/import_bank.py --bank ccb "raw/建行-交易明细.xls"
