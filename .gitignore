@@ -43,3 +43,7 @@ config/opening_draft.json
 .planning/
 docs/evidence/
 收件箱/
+
+# ── 加密备份（含敏感数据，永不入库；恢复流程见 docs/runbooks/03） ──
+backups/
+config/backup_secret.txt
