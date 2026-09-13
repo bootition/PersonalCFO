@@ -10,8 +10,8 @@ last_reviewed: 2026-09-09
 > `archive/` 中的历史报告只作追溯证据，不构成当前结论。
 > 修改任何代码/数据/文档后，如影响状态，必须同步更新本文件。
 
-- **最后更新**：2026-09-09
-- **更新人**：P6（多文件上传 + Wealthfolio 侧边栏）红队终审 PASS，阶段收官
+- **最后更新**：2026-09-13
+- **更新人**：上线就绪审查 + 全面整改（历史重写 / 许可证 / PII 门禁 / 可运行性 / 产品缺陷）
 
 ## 当前裁决（Verdict）
 
@@ -59,6 +59,8 @@ last_reviewed: 2026-09-09
 | **P7.22 银行导入预置（P3-2 前置）**（2026-09-12） | ✅ ①新增 `src/import_bank.py`：建行/招行/工行一条命令导入（`--dry-run` 写 `.planning/` 只报笔数+平衡；正式导入写 `journals/import-<bank>-*.journal` 并自动刷新 Paisa include + `check`；同 stem 自动加序号防覆盖）。②新增 `config/ccb.yaml`/`cmb.yaml`/`icbc.yaml`：默认全部落 `Expenses:FIXME`（不猜科目），仅含收入/利息/自有账户互转/手续费等少量规则，首次导入后按冒烟补规则。③修复 Windows 缺 tzdata：生成 `tools/zoneinfo.zip`（624 条、`ZIP_STORED`——Go zoneinfo 不支持 deflate）并在 deg 调用处注入 `ZONEINFO`（`import_bank.py` + `finance.py import`）；`.gitignore` 例外放行该文件（`/tools/*` + `!/tools/zoneinfo.zip`）。④**实测**：deg 官方 6 份示例账单全通过——建行 xls 7 笔、招行借记 6 笔/信用卡 7 笔、工行借记 12 笔/信用卡 10 笔/借记 v2 12 笔，逐份 `hledger check balanced` ✅。⑤runbook 04 §B 更新为可直接执行的三行命令 + 光大无 provider 说明 | main 待提交（本地） |
 | **P7.23 银行账单自动路由（UI 上传即可用）**（2026-09-12） | ✅ `finance.py import` 新增 `import_bank_bills()`：按文件名关键字（`建行/ccb`、`招行/招商银行/cmb`、`工行/工商银行/icbc`）自动路由到对应 deg provider + `config/<bank>.yaml`，输出 `journals/import-<bank>-*.journal`，与支付宝/微信同一次 import 完成 include 刷新与 `check`；未支持银行（光大/ceb）打印"需单独转换"提示，不再静默忽略。**沙箱实测**（deg 官方示例复制为 `建行-交易明细.xls`/`招行-储蓄卡.csv`/`工行-借记卡.csv` + 假光大文件）：识别 3 份并导入 7/6/12 笔、逐份 `hledger check balanced` ✅、光大提示正确、真实 `raw/` 未被改动 | main 待提交（本地） |
 | **P7.24 收口验证（全清单非用户项）**（2026-09-12） | ✅ 一次性汇总验证：①`finance.py check` 平衡；②`scripts/reconcile-check.py` 全绿（hledger check、14 月末恒等 0.0、两财年收支差 0.0、**跨源 9 个叶子科目 0 不一致**、期初自洽；FIXME 余额口径 2 科目=1.75%）；③`scripts/e2e-sweep.py` **31 路由 0 失败**；④新生成加密备份 `personalcfo-20260912-133526.pcfobak`（336 文件/23.9MB→6.2MB，sha256 `2eb7010b…`）并 `verify` 通过：sha256 全一致 + 恢复演练 `hledger check` rc=0；⑤远程：main `4a70bff`、fork 私有仓 `05e9d06` + Release `fork-2026-09-12-valid`（bundle 6,171,034 字节在列；本轮末 `ls-remote` 因网络超时未复测，此前已确认）。**结论：26 项中 24 项闭环**；仅剩 P3-1（Wealthfolio 安装/建户/录持仓）与 P3-2（银行账单导出）需用户操作，工具链与手册（runbook 04）均已就绪 | main 待提交（本地） |
+| **上线整改（2026-09-13）** | ✅ 已完成（本地，待 push）。按用户决策执行：**AGPL-3.0-or-later** / **重写历史** / **仅 Windows** / **可发布产品**。①**历史重写**：`git filter-repo --replace-text` + `--mailmap`，69 个提交全部清洗——人名/机构名/账户别名/本机路径/真实金额/真实邮箱**已从全部历史清除**（提交数 70，作者统一为 noreply）；②**许可证**：新增 `LICENSE`(AGPL-3.0) + `THIRD-PARTY-NOTICES.md`（hledger GPL-3.0 / deg Apache-2.0 / Paisa AGPL-3.0 / tzdata，含"不构成衍生作品"三条依据与三个反转边界）；③**PII 门禁**：`scripts/scan-pii.py`（通用模式 + gitignored 专属词表，支持 `--staged`/`--history`/`--show-tokens`），接入 CI；④**规则分层**：`config/<平台>.local.yaml`（私人，不入库）由 `import_rules.py` 合成，**导入结果与原单文件写法逐字节一致**；⑤**数据隔离**：`journals/.gitignore` 排除 `bak/`，raw 快照改到 `backups/raw-bak/`；⑥**可运行性**：`requirements*.txt` + `bootstrap.ps1` + `start.ps1` + 入口 bat 入库，`finance.py` 加二进制前置检查（不再抛 traceback）；⑦**代码 P0**：报表期初日门禁（`--allow-pre-opening`）、`backup --keep 0` 自杀、`backup verify` 不得新建密钥、全脚本 UTF-8 兜底、全角数字两层统一、`import_bank` 短路与回滚、`split_huabei` 写后自校验；⑧**产品**：`zh-CN`/`CNY`/1 月财年（修上游印度默认值）、`/init` 静默丢数改为行内报错、侧栏恢复「总览」并移除死链与税务组、`PCFO_ROOT` 自动探测；⑨**工程信号**：CI、31 项单元测试、Issue/PR 模板、CONTRIBUTING/SECURITY/CHANGELOG/RELEASING、README 与 6 篇对外文档重写，`任务计划.md` 移入 `docs/dev/`；⑩**界面二进制**：干净树重建（`vcs.modified=false`），源码可复现。**回归证据**：e2e-sweep 31 路由 0 失败、reconcile-check 全绿、备份 verify 通过、导入产物逐字节一致、PII 门禁（含历史）通过、31 项单测通过 | 本仓库 70 个提交；fork `c659ad9`+`vcs.modified=false` 重建 |
+
 | **上线就绪度审查**（2026-09-13） | ⚠️ **不通过**：5 路独立只读审查（代码/可运行性/开源发布/产品交互/Fork 维护性）。**发布就绪度 18/100**。技术声称复核**全部复现一致**（31 路由 0 失败、14 月末恒等 0.0、两财年勾稽 0.0、跨源 9 科目 0 不一致、备份 sha256 全一致）——**未发现假完成**；但发现 **12 项 P0**：①主仓无 LICENSE（默认保留所有权利）；②公开文件含真实姓名/金额/本机路径，**且 59/62 个历史提交含真名**（改代码无效，需 filter-repo 或声明历史）；③`journals/` 仓无 `.gitignore` 而 README 教 `git add .`，`bak/` 下有真实账单原件（**尚无 remote，未外泄**）；④fork 源码在私有仓 → 违反 AGPL §6，exe `vcs.modified=true` 无对应源码；⑤clone 后无任何可执行文件/账本/依赖清单，README 命令 5/8 直接 traceback；⑥`finance.py report` 不校验期初日 → **已产出的 2026 一季报/半年报无意义**（自检恒 0.00 抓不到）；⑦`backup.py --keep 0` 删掉刚生成的备份；⑧`/init` 非法自定义科目**静默丢数据**并报成功；⑨中文界面用上游印度默认值（`INR`/`en-IN`/财年 4 月起）且与 report 自然年口径不一致；⑩界面直出 `Assets:`/`FIXME`/`error.stack`；⑪导航挂着自我否定页 + 印度税务 3 层菜单；⑫负债要求填负数。另有 16 项 P1（11 个脚本仅 finance.py 有 UTF-8 兜底、10 个上游页面被删成空壳、可达性/移动端术语文案等） | `docs/reports/10_全项目上线就绪审查_2026-09-13.md`（approved） |
 | P1.4 银行全自动导入 | ✅ 已完成（P7.22/P7.23）：三家 provider+配置+自动路由（UI/CLI 均可）；**等用户导出账单**；光大需单独转换 | — |
 | 账本私仓 PersonalCFO-ledger | ⏸ 暂缓（本地 git 先用；加密备份已覆盖 journals，见 runbook 03） | — |
@@ -84,7 +86,15 @@ last_reviewed: 2026-09-09
 
 ## 进行中的工作
 
-- **上线就绪度审查（2026-09-13）结论：不通过，需按 `docs/reports/10_全项目上线就绪审查_2026-09-13.md` §9 路线修复**。该报告给出 5 路独立审查的完整证据与分级问题表（12×P0 / 16×P1 / 27×P2），以及"第 1 天解三个发布硬阻塞 → 第 2-3 天让项目能跑 → 第 2 周可持续性 → 第 3-4 周 Fork 分发与文档"的修复路线。**注意：报告中另有 5 项需用户决策（许可证选择、历史是否重写、目标平台、项目定位、P3-1/P3-2 是否启动）。**
+- **整改已完成（2026-09-13，本地）**，唯一未完成项是 **push**：网络不可用（`github.com:443` 连接超时），
+  70 个提交全部在本地。网络恢复后需执行：
+  ```bash
+  git fetch origin && git log --oneline origin/main | head -3   # 确认远程是否已有旧历史
+  git push --force --all && git push --force --tags             # 历史已重写，必须强推
+  ```
+  ⚠️ **强推前务必确认远程仓库没有被 fork**（有 fork 则 force-push 清不掉对方副本，需删仓重建）。
+  ⚠️ **强推后旧 SHA 全部失效**，`docs/` 与 `.planning/` 里引用的旧哈希（如 `4a70bff`/`905b4da`）仅供追溯。
+- fork 仓 `PersonalCFO-paisa` 同样需强推（本地新增 3 个提交，最新 `vcs.modified=false` 干净树构建）。
 - 用户下一步（原 P7 收口）：双击 `启动PersonalCFO.bat` 从空白初始态走 `/init` ①②③④；需要人工的待办见 `docs/runbooks/02_用户决策清单.md`。
 
 ## 当前有效文档（Current Truth）
