@@ -35,6 +35,14 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# ── 控制台编码兜底（管道/重定向下 stdout 为 CP936，中文与符号会崩）──
+# 本段自足，不依赖文件内已有的 import（有些模块没有 import sys）
+import sys as _sys
+import pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent / "src"))
+from _console import setup_console  # noqa: E402
+setup_console()
+
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 except ImportError:  # pragma: no cover
@@ -84,7 +92,22 @@ def git_rev(path: Path) -> str:
         return "n/a"
 
 
-def load_password(args) -> str:
+def _rel(p: Path) -> str:
+    """安全的相对路径显示：不在仓库内时退回绝对路径（relative_to 会抛 ValueError）。"""
+    try:
+        return str(p.relative_to(ROOT))
+    except ValueError:
+        return str(p)
+
+
+def load_password(args, create: bool = True) -> str:
+    """取备份口令。
+
+    create=False 用于 verify/restore —— **只读语义的命令绝不能落盘新密钥**。
+    历史缺陷：verify/restore 在密钥缺失时会生成一个随机密钥并写盘，
+    把"密钥丢了"变成"密码错误"，用户会误判归档损坏；更糟的是下次真 backup
+    会沿用这个随机密钥，与旧归档永久不兼容。
+    """
     if args.password:
         return args.password
     if os.environ.get("PCFO_BACKUP_PASS"):
@@ -93,7 +116,14 @@ def load_password(args) -> str:
         pw = SECRET_FILE.read_text(encoding="utf-8").strip()
         if pw:
             return pw
-    # 首次运行：生成随机密码并落盘（仅本地，gitignore），提醒用户抄到密码管理器
+    if not create:
+        sys.exit(
+            "找不到备份口令，无法校验/恢复归档。\n"
+            f"  已尝试：--password、环境变量 PCFO_BACKUP_PASS、{_rel(SECRET_FILE)}\n"
+            "  密钥丢失时归档无法恢复（没有后门）；请从你的密码管理器/离线副本里取回后重试。\n"
+            "  （本命令不会生成新密钥 —— 那会把「密钥丢失」伪装成「密码错误」）"
+        )
+    # 首次备份：生成随机口令并落盘（仅本地，gitignore），提醒用户抄到密码管理器
     pw = secrets.token_urlsafe(24)
     SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
     SECRET_FILE.write_text(pw + "\n", encoding="utf-8")
@@ -170,16 +200,25 @@ def cmd_backup(args):
     print(f"   sha256 {digest}")
     if missing:
         print(f"   ⚠️ 未找到（跳过）：{', '.join(missing)}")
-    _prune(args.keep)
+    _prune(args.keep, protect=out)
     return 0
 
 
-def _prune(keep: int):
-    archives = sorted(BACKUP_DIR.glob("personalcfo-*.pcfobak"), key=lambda p: p.stat().st_mtime, reverse=True)
+def _prune(keep: int, protect: Path | None = None):
+    """只清理**旧**归档。
+
+    protect：刚写出的这一份必须排除在淘汰集之外。
+    历史缺陷：候选集包含刚生成的归档且 to_delete = archives[keep:]，
+    于是 `backup --keep 0` 会删掉刚写好的备份、同时还打印"✅ 备份完成"。
+    """
+    archives = [p for p in sorted(BACKUP_DIR.glob("personalcfo-*.pcfobak"),
+                                  key=lambda p: p.stat().st_mtime, reverse=True)
+                if protect is None or p.resolve() != protect.resolve()]
+    keep = max(0, keep)
     to_delete = archives[keep:]
     if to_delete:
-        # P7.20（红队 S2-6）：清理前先告知，避免"静默删旧归档"
-        print(f"   保留最近 {keep} 份，将删除 {len(to_delete)} 份旧归档（--keep 可调，0=不保留历史）")
+        print(f"   保留最近 {keep} 份旧归档，将删除 {len(to_delete)} 份"
+              f"（--keep 可调；本次新生成的归档始终保留）")
     for old in to_delete:
         old.unlink()
         print(f"   已清理旧归档 {old.name}")
@@ -200,7 +239,7 @@ def _decrypt(archive: Path, password: str) -> io.BytesIO:
 
 def cmd_verify(args):
     archive = Path(args.archive)
-    buf = _decrypt(archive, load_password(args))
+    buf = _decrypt(archive, load_password(args, create=False))
     tmp = Path(tempfile.mkdtemp(prefix="pcfo-verify-"))
     with tarfile.open(fileobj=buf, mode="r:gz") as tar:
         tar.extractall(tmp)
@@ -234,7 +273,7 @@ def cmd_restore(args):
     target = Path(args.to).resolve()
     if target.exists() and any(target.iterdir()) and not args.force:
         sys.exit(f"{target} 非空；确认覆盖请加 --force")
-    buf = _decrypt(archive, load_password(args))
+    buf = _decrypt(archive, load_password(args, create=False))
     tmp = Path(tempfile.mkdtemp(prefix="pcfo-restore-"))
     with tarfile.open(fileobj=buf, mode="r:gz") as tar:
         tar.extractall(tmp)

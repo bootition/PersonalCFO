@@ -44,3 +44,29 @@ superseded_by: <仅 superseded 时必填，指向新文档>
 ## 敏感内容红线
 
 写入 git 的文档只含**聚合指标**（计数、比率、匹配率）；账户余额、交易明细、卡号、身份证号等一律不得出现在 `docs/` 任何入库文件中（含 reports/、contracts/）。
+
+## 对外读者入口（新增，2026-09-13）
+
+如果你是**使用者**而不是维护者，从这些开始，不必读内部文档：
+
+| 文档 | 内容 |
+|---|---|
+| [../README.md](../README.md) | 项目是什么、快速开始 |
+| [getting-started.md](getting-started.md) | 从零到第一份财报 |
+| [import-rules.md](import-rules.md) | 导入规则怎么写、怎么分层 |
+| [troubleshooting.md](troubleshooting.md) | 故障排查 |
+| [privacy.md](privacy.md) | 隐私、备份加密、发布前检查 |
+| [architecture.md](architecture.md) | 架构与设计取舍 |
+| [RELEASING.md](RELEASING.md) | 发布流程（维护者） |
+
+## 内部文档
+
+| 文档 | 说明 |
+|---|---|
+| [STATUS.md](STATUS.md) | 内部状态唯一真相（阶段日志，含内部编号） |
+| [dev/任务计划.md](dev/任务计划.md) | 分阶段实施计划与逐日执行日志 |
+| [decisions/](decisions/) | 决策记录 |
+| [contracts/](contracts/) | 文件契约 |
+| [reports/](reports/) | 红队审查报告 |
+| [runbooks/](runbooks/) | 操作手册（月度 SOP / 备份恢复 / 接入手册） |
+| [archive/](archive/) | 调研档案（历史结论，不构成当前依据） |

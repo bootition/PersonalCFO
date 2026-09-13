@@ -9,6 +9,14 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+# ── 控制台编码兜底（管道/重定向下 stdout 为 CP936，中文与符号会崩）──
+# 本段自足，不依赖文件内已有的 import（有些模块没有 import sys）
+import sys as _sys
+import pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+from _console import setup_console  # noqa: E402
+setup_console()
+
 _TX_HEAD = re.compile(r"^(\d{4})[/\-](\d{2})[/\-](\d{2}) ")
 _META = re.compile(r'^\s*; (\w+): "?(.*?)"?$')
 _POSTING = re.compile(r"^\s+(\S[^;]*?)\s+(-?\s?[\d,]+(?:\.\d+)?)\s*CNY")

@@ -14,21 +14,21 @@
 import argparse
 import csv
 import os
+import re
 import shutil
 import subprocess
 import sys
 from datetime import date
 from pathlib import Path
 
-# GBK 控制台防护（红队 P5 f 项）：无 PYTHONIOENCODING 时 forecast 等中文输出不再崩溃
-for _stream in (sys.stdout, sys.stderr):
-    try:
-        _stream.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+from _console import setup_console
+
+# GBK 控制台防护：无 PYTHONIOENCODING 时中文/符号输出在管道下不再崩溃
+setup_console()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from journal_stats import smoke_report  # noqa: E402
+from import_rules import merged_config  # noqa: E402  （公共模板 + 私人规则分层合成）
 
 ROOT = Path(__file__).resolve().parents[1]
 JOURNALS_DIR = ROOT / "journals"
@@ -38,7 +38,32 @@ RAW_DIR = ROOT / "raw"
 CONFIG_DIR = ROOT / "config"
 DEG = ROOT / "tools" / "double-entry-generator.exe"
 HL = ROOT / "tools" / "hledger-bin" / "hledger.exe"
-EDGE = Path("C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe")
+# HTML→PDF 渲染器候选路径。
+# 历史缺陷：只硬编码 32 位 Edge 路径 → 只装 64 位 Edge/Chrome 的机器会静默跳过 PDF，
+# 而调用方不检查返回值，用户以为"报表生成失败"其实是找不到浏览器。
+BROWSER_CANDIDATES = [
+    r"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+    r"C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+    r"C:/Program Files/Google/Chrome/Application/chrome.exe",
+    r"C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+]
+
+
+def find_browser() -> Path | None:
+    """返回可用的浏览器可执行文件；找不到返回 None。"""
+    import shutil as _shutil
+    for cand in BROWSER_CANDIDATES:
+        p = Path(cand)
+        if p.exists():
+            return p
+    for name in ("msedge", "chrome", "chromium"):
+        found = _shutil.which(name)
+        if found:
+            return Path(found)
+    return None
+
+
+EDGE = find_browser()
 
 STATEMENTS = {
     "1_资产负债表": "balancesheet",
@@ -46,6 +71,19 @@ STATEMENTS = {
     "3_现金流量表": "cashflow",
     "4_含权益资产负债表": "balancesheetequity",
 }
+
+
+MISSING_HINT = """
+请先补齐外部二进制（下载地址与版本见 tools/README.md）：
+  tools/hledger-bin/hledger.exe         hledger 1.52.3
+  tools/double-entry-generator.exe      double-entry-generator v2.15.1
+或运行一键安装：powershell -File scripts/bootstrap.ps1"""
+
+
+def require_binary(path: Path, what: str) -> None:
+    """外部二进制缺失时给出可照做的提示，而不是 FileNotFoundError traceback。"""
+    if not path.exists():
+        sys.exit(f"[缺失] 未找到{what}：{path}{MISSING_HINT}")
 
 
 def run_console_utf8(args, capture=True):
@@ -71,6 +109,7 @@ def journal_args():
 
 def hledger(*args, input_text=None):
     """运行 hledger；返回 UTF-8 解码后的 stdout。"""
+    require_binary(HL, "hledger")
     cmd = [str(HL), *[str(a) for a in args]]
     if input_text is not None:
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
@@ -100,8 +139,10 @@ def status():
     s = {"imported": [], "opening": False, "recurring": False,
          "check_ok": True, "check_output": "", "fixme_txs": 0,
          "fixme_amount": 0.0, "balance_accounts": [],
+         # raw/ 在全新 clone 里还不存在；不能直接 iterdir()（会 FileNotFoundError）
          "raw_files": sorted(p.name for p in RAW_DIR.iterdir()
-                             if p.is_file() and not p.name.startswith("."))}
+                             if p.is_file() and not p.name.startswith("."))
+         if RAW_DIR.exists() else []}
     for f in sorted(JOURNALS_DIR.glob("import-*.journal")):
         s["imported"].append({"file": f.name, "txs": journal_stats(f)["txs"]})
     s["opening"] = any(JOURNALS_DIR.glob("*-opening.journal"))
@@ -150,12 +191,33 @@ def refresh_paisa_includes():
     (paisa_dir / "all.journal").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-MONEY_RE = __import__("re").compile(r"^-?(\d+|\d{1,3}(,\d{3})*)(\.\d+)?$")
+MONEY_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})*)(?:\.\d+)?$", re.ASCII)
+
+# 全角 → 半角。
+# 中文输入法在中文语境下很容易打出全角数字/标点，若直接拒绝，用户会看到
+# "非法金额" 却看不出哪里错了（实测：`１０００` 与 `1000` 肉眼几乎没差别）。
+# 而且此前两层行为不一致：Python 的 `\d` 匹配 Unicode 数字（接受全角），
+# Go 侧（pcfo.go 的 pcfoAmtRe）的 `\d` 是 ASCII-only（拒绝全角）。
+# 现在统一为：**先归一化再校验**，两层都接受全角。
+_FULLWIDTH = str.maketrans({
+    "０": "0", "１": "1", "２": "2", "３": "3", "４": "4",
+    "５": "5", "６": "6", "７": "7", "８": "8", "９": "9",
+    "，": ",", "．": ".", "。": ".", "－": "-", "—": "-",
+    "﹣": "-", "＋": "+", "　": " ", "：": ":",
+})
+
+
+def normalize_digits(s: str) -> str:
+    """把全角数字/标点归一化为半角（幂等）。"""
+    return (s or "").translate(_FULLWIDTH)
 
 
 def parse_money_strict(s: str) -> float:
-    """严格金额：只接受 123 / 1,234.56 千分位（拒绝 "1,2" 之类）；非法抛 ValueError。"""
-    t = (s or "").strip()
+    """严格金额：接受 123 / 1,234.56 千分位（拒绝 "1,2" 之类）；非法抛 ValueError。
+
+    全角输入会先归一化，因此 `１，２３４．５６` 与 `1,234.56` 等价。
+    """
+    t = normalize_digits(s).strip()
     if not MONEY_RE.match(t):
         raise ValueError(f"非法金额: {s!r}")
     return float(t.replace(",", ""))
@@ -284,9 +346,11 @@ def preprocess_wechat(bill: Path) -> Path:
 
 
 # 各平台导入任务：pattern 匹配 raw/ 下账单；deg_extra 为该 provider 的额外参数
+# 规则配置：实际交给 deg 的是 merged_config(platform) —— 公共模板 config/<p>.yaml
+# 与私人覆盖 config/<p>.local.yaml（不入库）的合成结果。见 src/import_rules.py。
 IMPORT_JOBS = [
-    ("alipay", "支付宝交易明细*.csv", "config/alipay.yaml", []),
-    ("wechat", "微信支付账单流水文件*.xlsx", "config/wechat.yaml",
+    ("alipay", "支付宝交易明细*.csv", []),
+    ("wechat", "微信支付账单流水文件*.xlsx",
      ["--ignore-invalid-tx-types"]),  # 理财通赎回等 deg 未收录类型靠规则原文匹配
 ]
 
@@ -342,7 +406,7 @@ def import_bills():
     """raw/ 下的支付宝 CSV / 微信 XLSX → deg → journals/import-*.journal，逐平台冒烟。"""
     any_import = False
     alipay_outputs = []
-    for platform, pattern, cfg, deg_extra in IMPORT_JOBS:
+    for platform, pattern, deg_extra in IMPORT_JOBS:
         bills = sorted(RAW_DIR.glob(pattern))
         if not bills:
             print(f"[跳过] raw/ 下没有 {platform} 账单（{pattern}）")
@@ -357,11 +421,12 @@ def import_bills():
                 tmp = preprocess_wechat(bill)
             else:
                 tmp = bill
+            require_binary(DEG, "double-entry-generator")
             subprocess.run(["chcp.com", "65001"], stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, check=False)
             res = subprocess.run(
                 [str(DEG), "translate", "-p", platform, "-t", "ledger",
-                 "--config", str(ROOT / cfg), *deg_extra,
+                 "--config", str(merged_config(platform)), *deg_extra,
                  str(tmp), "-o", str(out_file)],
                 capture_output=True,
                 env={**os.environ, "ZONEINFO": str(ROOT / "tools" / "zoneinfo.zip")})
@@ -395,7 +460,10 @@ def import_bills():
             print(f"── 花呗拆分 {out.name}")
             sp = subprocess.run(
                 [sys.executable, str(ROOT / "src" / "split_huabei.py"), str(out)],
-                capture_output=True)
+                capture_output=True,
+                # 显式指定子进程输出编码：否则被 capture 的子进程 stdout 是 GBK，
+                # 而下面按 UTF-8 解码 → 拆分报告在 import 日志里变成乱码
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"})
             txt = sp.stdout.decode("utf-8", errors="replace")
             print("\n".join(txt.splitlines()[:9]))
             if sp.returncode != 0:
@@ -475,7 +543,29 @@ def equity_change_table(year: int, end: str):
     return txt, "\n".join(csv_lines), html
 
 
-def report(year: int):
+def opening_date():
+    """取账本里的建账（期初）日期；没有期初分录时返回 None。
+
+    为什么必须有这个函数：`report` 的期次是**日历期**（Q1 到 04-01、H1 到 07-01…），
+    而时点报表（资产负债表 / 含权益表 / 权益变动表）在"期末早于建账日"时算的是
+    **未建账的净流量余额**，数字没有意义。实测：期初分录在 2026-09-10，
+    却照样出"2026 半年报"，Net = 负数数万。
+
+    更隐蔽的是：`equity_change_table` 的内部恒等式（期末 = 期初 + 净利润 + 其他变动）
+    在任意时点都恒等于 0.00 —— 它是**算术自洽**校验，不是**正确性**校验，
+    所以任何自检都发现不了这个问题。
+    """
+    dates = []
+    for f in sorted(JOURNALS_DIR.glob("*-opening.journal")):
+        for line in f.read_text(encoding="utf-8").splitlines():
+            m = re.match(r"^(\d{4})[/-](\d{2})[/-](\d{2})\s", line)
+            if m:
+                dates.append(date(int(m.group(1)), int(m.group(2)), int(m.group(3))))
+                break
+    return max(dates) if dates else None
+
+
+def report(year: int, allow_pre_opening: bool = False):
     out_dir = REPORTS_DIR / str(year)
     out_dir.mkdir(parents=True, exist_ok=True)
     periods = {
@@ -485,7 +575,18 @@ def report(year: int):
         "AN": f"{year + 1}-01-01",
     }
     titles = {"Q1": "一季报", "H1": "半年报", "Q3": "三季报", "AN": "年报"}
+    op = opening_date()
+    if op:
+        print(f"期初（建账）日期：{op.isoformat()}")
+    else:
+        print("提示：账本里没有 *-opening.journal（尚未期初建账）；"
+              "此时报表只反映账单净流量，不是完整财务状况。")
+    skipped = []
     for period, end in periods.items():
+        # 期次末早于/等于建账日 → 该期财报无意义，跳过（--allow-pre-opening 可强制）
+        if op and date.fromisoformat(end) <= op and not allow_pre_opening:
+            skipped.append(f"{period}（期末 {end} 早于建账日 {op.isoformat()}）")
+            continue
         html_parts = []
         for fname, cmd in STATEMENTS.items():
             txt = hledger(*journal_args(), cmd,
@@ -525,6 +626,11 @@ h2{{border-left:6px solid #2a7;padding-left:.5em}}</style></head>
                 print(f"{period}: PDF 生成失败 {res.stderr[:120]}")
         else:
             print(f"{period}: 未找到 Edge，跳过 PDF")
+    if skipped:
+        print("\n⚠️ 已跳过以下期次（期末早于建账日，报表无意义）：")
+        for s in skipped:
+            print(f"    - {s}")
+        print("    如需强制生成（例如仅看流水口径），加 --allow-pre-opening")
     print(f"完成：{out_dir}")
 
 
@@ -734,6 +840,8 @@ def main():
     sub.add_parser("status")
     sub.add_parser("import")
     p = sub.add_parser("report"); p.add_argument("year", type=int)
+    p.add_argument("--allow-pre-opening", action="store_true",
+                   help="允许生成期末早于建账日的期次（默认跳过并告警）")
     p = sub.add_parser("close"); p.add_argument("year", type=int); p.add_argument("period")
     p = sub.add_parser("reopen"); p.add_argument("year", type=int); p.add_argument("period")
     p = sub.add_parser("forecast"); p.add_argument("--months", type=int, default=12)
@@ -746,7 +854,7 @@ def main():
     elif args.cmd == "import":
         import_bills()
     elif args.cmd == "report":
-        report(args.year)
+        report(args.year, args.allow_pre_opening)
     elif args.cmd == "close":
         close(args.year, args.period)
     elif args.cmd == "reopen":

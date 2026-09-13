@@ -22,10 +22,19 @@
 import argparse
 import re
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
+
+# ── 控制台编码兜底（管道/重定向下 stdout 为 CP936，中文与符号会崩）──
+# 本段自足，不依赖文件内已有的 import（有些模块没有 import sys）
+import sys as _sys
+import pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+from _console import setup_console  # noqa: E402
+setup_console()
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCAL_CFG = ROOT / "config" / "local.yaml"
@@ -557,7 +566,8 @@ def main():
         return
     changed = apply_splits(txs, res)
     BAK_DIR.mkdir(exist_ok=True)
-    shutil.copy2(args.journal, BAK_DIR / f"{args.journal.name}.{stamp}.bak")
+    backup = BAK_DIR / f"{args.journal.name}.{stamp}.bak"
+    shutil.copy2(args.journal, backup)
     body = []
     for tx in txs:
         body.append(tx.head)
@@ -567,8 +577,23 @@ def main():
     if additions:
         text = text.rstrip() + "\n" + additions + "\n"
     args.journal.write_text(text + "\n", encoding="utf-8")
-    print(f"已改写 {args.journal.name}：拆分 {changed} 笔；原文件备份 journals/bak/；报告 reports/huabei-split-{stamp}.txt")
-    print("下一步：python src/finance.py check")
+
+    # ── 写后立即自检，失败回滚 ──
+    # 这是全项目唯一直接覆盖"唯一真相"账本的写路径。
+    # apply_splits 只改第一条花呗借方分录（内部 break），一笔含 ≥2 条花呗分录的交易
+    # 拆完会不平；此前只打印"下一步：check"而不自校，被 finance.py import 调用时
+    # 外层 check() 能发现不平衡却不会回滚。
+    chk = subprocess.run([str(ROOT / "tools" / "hledger-bin" / "hledger.exe"),
+                          "-f", str(args.journal), "check", "balanced"],
+                         capture_output=True)
+    if chk.returncode != 0:
+        shutil.copy2(backup, args.journal)
+        err = chk.stderr.decode("utf-8", errors="replace")[:400]
+        sys.exit(f"❌ 拆分后账本不平衡，已从 {backup.name} 回滚：\n{err}\n"
+                 f"   （通常意味着同一笔交易含多条花呗分录，需手工处理）")
+
+    print(f"已改写 {args.journal.name}：拆分 {changed} 笔；平衡校验 ✅；"
+          f"原文件备份 journals/bak/{backup.name}；报告 reports/huabei-split-{stamp}.txt")
 
 
 if __name__ == "__main__":

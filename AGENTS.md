@@ -1,6 +1,11 @@
 # AGENTS.md — 项目智能体规则
 
-本文件为 AI 助手（opencode/Codex 等）在本仓库工作的强制规则。
+> **受众说明**：本文件是给 **AI 编码助手**（opencode / Codex / Claude Code 等）看的强制工作规则，
+> 不是给使用者看的说明书。**使用者请从 [README.md](README.md) 开始**，
+> 排错看 [docs/troubleshooting.md](docs/troubleshooting.md)。
+>
+> 对外读者可能感兴趣的两节：**红队审查制度**（怎么防"假完成"）与**隐私红线**（哪些数据永不入库）。
+> 内部工作日志在 [docs/dev/任务计划.md](docs/dev/任务计划.md) 与 [docs/STATUS.md](docs/STATUS.md)。
 
 ## 项目一句话
 
@@ -12,7 +17,7 @@
 
 1. `docs/STATUS.md` — **当前状态唯一权威**，含当前裁决、剩余缺口、进行中工作
 2. `docs/README.md` — 文档地图与生命周期规则
-3. `任务计划.md`（根目录）— 分阶段实施计划与执行日志
+3. `docs/dev/任务计划.md`（根目录）— 分阶段实施计划与执行日志
 4. 任务相关代码/文档（架构结论以 `docs/decisions/01_架构总纲_v3定稿.md` 为准）
 
 ### 2. 文档状态语义（front-matter `status` 字段）

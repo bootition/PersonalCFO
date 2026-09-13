@@ -5,7 +5,8 @@
 校验内容：
   1. hledger check：账本结构/平衡（balances, accounts, ordereddates...）
   2. 月度借贷恒等：每月末 资产 + 负债 + 权益 + 收入 + 支出 = 0（delta 应为 0.00）
-  3. 财年勾稽：hledger 的收入/支出合计 vs Paisa /api/income_statement（FY 4 月起）
+  3. 财年勾稽：hledger 的收入/支出合计 vs Paisa /api/income_statement
+     （财年起始月从 /api/config 的 financial_year_starting_month 读取，不再硬编码）
   4. 期初分录：opening journal 自平衡，且 Equity:期初调整 = -(资产 + 负债)
   5. FIXME 规模（笔数/金额占比，仅本地输出）
 
@@ -25,6 +26,14 @@ import sys
 import urllib.request
 from datetime import date
 from pathlib import Path
+
+# ── 控制台编码兜底（管道/重定向下 stdout 为 CP936，中文与符号会崩）──
+# 本段自足，不依赖文件内已有的 import（有些模块没有 import sys）
+import sys as _sys
+import pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent / "src"))
+from _console import setup_console  # noqa: E402
+setup_console()
 
 ROOT = Path(__file__).resolve().parent.parent
 HLEDGER = ROOT / "tools" / "hledger-bin" / "hledger.exe"
@@ -164,9 +173,20 @@ def main():
         if not args.allow_no_api:
             failures.append(f"财年勾稽无法执行（API 不可用：{api_error[:80]}）；如确需跳过加 --allow-no-api")
     if api:
+        # 财年起始月从 Paisa 配置读取，不再硬编码 4。
+        # 背景：上游 Paisa 默认 4 月起（印度财年），本项目 paisa.yaml 已显式设为 1 月，
+        # 与 finance.py report 的日历期次（Q1 到 04-01 / H1 到 07-01 …）保持一致。
+        # 若这里仍按 4 月切分，勾稽会与 UI 显示的财年在语义上错位。
+        fy_start_month = 4
+        try:
+            cfg = fetch_json(args.api + "/api/config")
+            fy_start_month = int(cfg.get("config", {}).get("financial_year_starting_month", 4))
+        except Exception as e:  # noqa: BLE001
+            report["fy_start_month_warning"] = f"未能读取配置，按 4 月起估算：{e}"
+        report["fy_start_month"] = fy_start_month
         yearly = api.get("yearly", {})
         checks = []
-        for label, begin, end in fy_bounds():
+        for label, begin, end in fy_bounds(fy_start_month):
             stmt = yearly.get(label)
             if not stmt:
                 continue

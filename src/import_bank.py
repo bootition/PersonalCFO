@@ -23,7 +23,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import finance as F  # noqa: E402
+import finance as F
+from import_rules import merged_config  # noqa: E402
+
+# ── 控制台编码兜底（管道/重定向下 stdout 为 CP936，中文与符号会崩）──
+# 本段自足，不依赖文件内已有的 import（有些模块没有 import sys）
+import sys as _sys
+import pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+from _console import setup_console  # noqa: E402
+setup_console()
 
 ZONEINFO = F.ROOT / "tools" / "zoneinfo.zip"   # P7.22：Windows 无 tzdata，deg 解析时区需要
 
@@ -44,12 +53,13 @@ def import_one(bank: str, bill: Path, out_stem: str, dry_run: bool) -> bool:
     subprocess.run(["chcp.com", "65001"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
     res = subprocess.run(
         [str(F.DEG), "translate", "-p", bank, "-t", "ledger",
-         "--config", str(F.ROOT / BANKS[bank]),
+         "--config", str(merged_config(bank)),
          str(bill), "-o", str(out)],
         capture_output=True,
         env={**os.environ, "ZONEINFO": str(ZONEINFO)})
     if res.returncode != 0:
         print(f"❌ deg 导入失败（{bill.name}）：{res.stderr.decode('utf-8', errors='replace')[:400]}")
+        out.unlink(missing_ok=True)   # deg 可能已写出半成品；不能留脏 journal
         return False
     text = out.read_text(encoding="utf-8") if out.exists() else ""
     txs = sum(1 for l in text.splitlines() if l[:4].isdigit() and "/" in l[:10])
@@ -60,6 +70,11 @@ def import_one(bank: str, bill: Path, out_stem: str, dry_run: bool) -> bool:
     print(f"{'[干跑]' if dry_run else '[导入]'} {bill.name} -> {out.name}：{txs} 笔，"
           f"平衡 {'✅' if ok else '❌ ' + chk.stderr.decode('utf-8', errors='replace')[:200]}")
     if not ok:
+        # 写后校验失败 → 立即回滚，否则账本被污染、之后每次 finance.py check 都会失败
+        # （对比 sync_fair_value.py:151-154 与 finance.py 的 reconcile 都做了同样的事）
+        if not dry_run and out.exists():
+            out.unlink()
+            print(f"   ↩️ 已回滚删除不平衡的 {out.name}")
         return False
     if not dry_run:
         F.refresh_paisa_includes()
@@ -81,7 +96,15 @@ def main():
         seen[f.stem] = seen.get(f.stem, 0) + 1
         stem = f.stem if seen[f.stem] == 1 else f"{f.stem}-{seen[f.stem]}"
         jobs.append((f, stem))
-    ok = all(import_one(args.bank, f, stem, args.dry_run) for f, stem in jobs)
+    # 不要用 all(生成器)：all() 在第一个 False 处短路，后面的文件会被静默跳过且无提示。
+    # 改为显式循环：全部处理完，最后汇总失败清单。
+    failed: list[str] = []
+    for f, stem in jobs:
+        if not import_one(args.bank, f, stem, args.dry_run):
+            failed.append(f.name)
+    ok = not failed
+    if failed:
+        print(f"❌ 失败 {len(failed)}/{len(jobs)} 份：{', '.join(failed)}")
     if args.dry_run and ok:
         print("\n干跑通过。确认无误后去掉 --dry-run 正式导入；有疑问先看 .planning/ 下的 journal。")
     return 0 if ok else 1

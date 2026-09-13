@@ -27,6 +27,14 @@ import sys
 import time
 from pathlib import Path
 
+# ── 控制台编码兜底（管道/重定向下 stdout 为 CP936，中文与符号会崩）──
+# 本段自足，不依赖文件内已有的 import（有些模块没有 import sys）
+import sys as _sys
+import pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent / "src"))
+from _console import setup_console  # noqa: E402
+setup_console()
+
 
 def _git_head():
     try:

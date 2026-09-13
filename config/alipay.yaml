@@ -21,7 +21,7 @@
 defaultMinusAccount: Assets:FIXME
 defaultPlusAccount: Expenses:FIXME
 defaultCurrency: CNY
-title: <姓名缩写>个人账本
+title: 个人账本
 
 alipay:
   rules:
@@ -101,13 +101,15 @@ alipay:
     - category: 信用借还
       item: 还款
       targetAccount: Liabilities:花呗
-    # BUFF 饰品：现金流进出都记投资科目（Wealthfolio 子账本记逐笔，季度公允价值调整兜底）
-    - peer: 网易BUFF
-      targetAccount: Assets:投资:虚拟物品
-    - type: 收入
-      peer: 网易BUFF
-      targetAccount: Assets:投资:虚拟物品
-      methodAccount: Assets:现金:支付宝   # BUFF 收入到账余额（支付方式缺失时补全）
+    # 例：某个虚拟物品交易平台，现金流进出都记投资科目（子账本记逐笔，季度公允价值调整兜底）
+    # 这类"绑定你自己账户命名"的规则请写到 config/alipay.local.yaml（不入库），例如：
+    #     - peer: <平台名>
+    #       targetAccount: Assets:投资:<你的账户名>
+    #     - type: 收入
+    #       peer: <平台名>
+    #       targetAccount: Assets:投资:<你的账户名>
+    #       methodAccount: Assets:现金:支付宝
+    # 详见 docs/import-rules.md「规则分层」
     # 副业：云账户灵活用工 + 闲鱼卖电子资料（item 关键词，收入方向限定防误伤）
     - peer: 云账户
       targetAccount: Income:副业收入
@@ -239,14 +241,8 @@ alipay:
       targetAccount: Assets:现金:余额宝
       methodAccount: Assets:投资:基金
 
-    # ══ 用户定性（P7.21，2026-09-12 用户确认）══
-    # 课程分期/首付（12 笔）→ 书籍学习
-    - peer: 课程平台
-      targetAccount: Expenses:书籍学习
-    # 每月固定充值（4 笔）→ 饭卡/饭卡 → 日常三餐
-    - item: 充值-普通充值
-      targetAccount: Expenses:日常三餐
-    # 家人转入的生活费
-    - type: 收入
-      peer: 家人
-      targetAccount: Income:生活费
+    # ══ 私人规则请写到 config/alipay.local.yaml ══
+    # 涉及真实对手方名称/个人账户命名的规则不能进公开仓库（PII 门禁会拦）。
+    # src/import_rules.py 会把 config/alipay.local.yaml 的规则**追加在本文件之后**，
+    # 依 deg「后命中覆盖先命中」语义生效——效果与写在这里完全一致。
+    # 见 docs/import-rules.md「规则分层」。

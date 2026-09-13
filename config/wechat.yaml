@@ -16,7 +16,7 @@ defaultMinusAccount: Assets:FIXME
 defaultPlusAccount: Expenses:FIXME
 defaultCommissionAccount: Expenses:其他
 defaultCurrency: CNY
-title: <姓名缩写>个人账本
+title: 个人账本
 
 wechat:
   rules:
@@ -137,8 +137,5 @@ wechat:
       targetAccount: Assets:现金:零钱通
       methodAccount: Assets:投资:基金
 
-    # ══ 用户定性（P7.21，2026-09-12 用户确认）══
-    # 家人转入 = 生活费（仅收入方向；转出保持 FIXME）
-    - type: 收入
-      peer: 家人
-      targetAccount: Income:生活费
+    # ══ 私人规则请写到 config/wechat.local.yaml ══
+    # 见 docs/import-rules.md「规则分层」。

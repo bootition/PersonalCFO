@@ -21,6 +21,14 @@ import sys
 from datetime import date
 from pathlib import Path
 
+# ── 控制台编码兜底（管道/重定向下 stdout 为 CP936，中文与符号会崩）──
+# 本段自足，不依赖文件内已有的 import（有些模块没有 import sys）
+import sys as _sys
+import pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+from _console import setup_console  # noqa: E402
+setup_console()
+
 ROOT = Path(__file__).resolve().parents[1]
 JOURNALS_DIR = ROOT / "journals"
 HL = ROOT / "tools" / "hledger-bin" / "hledger.exe"
@@ -28,13 +36,43 @@ HL = ROOT / "tools" / "hledger-bin" / "hledger.exe"
 # ── 契约 C4：holdings CSV 必填字段（Wealthfolio 导出；缺失即报错）──
 REQUIRED_FIELDS = ["account_name", "symbol_name", "market_value", "cost_basis"]
 
-# Wealthfolio 账户名 → journal 投资科目（P2.1 建户后核对/扩充）
-ACCOUNT_MAP = {
-    "账户A": "Assets:投资:基金",
-    "账户B": "Assets:投资:股票",
-    "虚拟货币": "Assets:投资:虚拟货币",
-    "虚拟物品": "Assets:投资:虚拟物品",
-}
+# ── Wealthfolio 账户名 → journal 投资科目 ──
+# 真实账户名属于个人信息（会暴露投资策略），**不入库**：
+#   本地真实映射：config/wealthfolio-accounts.local.json   （.gitignore 已排除）
+#   占位示例：    config/wealthfolio-accounts.example.json（随仓库分发）
+ACCOUNTS_FILE = ROOT / "config" / "wealthfolio-accounts.local.json"
+ACCOUNTS_EXAMPLE = ROOT / "config" / "wealthfolio-accounts.example.json"
+
+
+def load_account_map() -> dict:
+    """读取 Wealthfolio 账户映射；缺失时给出可照做的中文提示，而不是猜。"""
+    global ACCOUNT_MAP
+    if not ACCOUNTS_FILE.exists():
+        rel = ACCOUNTS_FILE.relative_to(ROOT)
+        ex = ACCOUNTS_EXAMPLE.relative_to(ROOT)
+        sys.exit(
+            "缺少账户映射文件：" + str(rel) + "\n"
+            "请复制 " + str(ex) + " 为 " + rel.name + "，"
+            "按你的 Wealthfolio 账户名逐条填写后重跑。\n"
+            "（该文件含个人账户命名，已被 .gitignore 排除，不会入库）"
+        )
+    import json
+    try:
+        data = json.loads(ACCOUNTS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        sys.exit(f"账户映射文件无法解析（{e}）：{ACCOUNTS_FILE}")
+    if not isinstance(data, dict) or not data:
+        sys.exit(f"账户映射必须是「Wealthfolio 账户名 → 科目」的非空 JSON 对象：{ACCOUNTS_FILE}")
+    bad = {k: v for k, v in data.items()
+           if not (isinstance(v, str) and v.startswith(INVEST_ROOT + ":"))}
+    if bad:
+        sys.exit(f"以下映射的科目必须以 {INVEST_ROOT}: 开头：{bad}")
+    ACCOUNT_MAP = data
+    return data
+
+
+# 运行时由 load_account_map() 填充（见 main）
+ACCOUNT_MAP: dict = {}
 
 INVEST_ROOT = "Assets:投资"
 FV_ACCOUNT = "Income:投资损益:公允价值"
@@ -111,6 +149,7 @@ def main():
         sys.exit(f"--date 非法: {args.date!r}（{e}）")
     args.date = day.isoformat()
 
+    load_account_map()
     holdings = read_holdings(args.holdings)
     book = journal_invest_balances()
 
