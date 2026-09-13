@@ -1,15 +1,28 @@
-# ── 隐私与生成物（永不入库；仅根目录，勿误伤 docs/ 下同名目录） ──
+# 说明：根目录下的「仅根目录」规则都用前导 `/` 锚定，避免误伤 docs/ 等同名子目录。
+
+# ── 隐私与生成物（永不入库） ──
 /journals/
 /raw/
 /reports/
 /close/
+/backups/
 *.bak
-*.bat
 
-# ── 外部工具与底座（本地保留，另行管理；仅根目录） ──
+# ── 启动器：必须入库（README/runbook 让用户"双击"的入口就是它） ──
+/*.bat
+!/启动PersonalCFO.bat
+
+# ── 外部工具底座（本地保留，另行管理；仅根目录） ──
 /tools/*
-# 例外：银行导入需要的时区库（Windows 无 tzdata，deg 解析时区用；小体积、必须随仓库分发）
+# 例外：这三类必须随仓库分发
+#   zoneinfo.zip  —— Windows 无 tzdata，deg 解析时区必需（ZIP_STORED，Go zoneinfo 不支持 deflate）
+#   README.md     —— 三个二进制的官方下载地址与版本（唯一指南，README.md 指向它）
+#   LICENSE / README.deg*.md —— double-entry-generator 发行包自带的许可证与声明（Apache-2.0 分发义务）
 !/tools/zoneinfo.zip
+!/tools/README.md
+!/tools/LICENSE
+!/tools/README.deg.md
+!/tools/README.deg.en.md
 /vendor/
 /reference/
 /archive/
@@ -20,6 +33,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.venv/
 
 # ── Node（Paisa 构建产物） ──
 node_modules/
@@ -30,22 +44,31 @@ dist/
 Thumbs.db
 .vscode/
 .idea/
+.editorconfig.bak
 
 # ── 本地敏感信息与机密配置（绝不入库） ──
 docs/本地敏感信息_DO_NOT_COMMIT.md
+docs/本地待办_DO_NOT_COMMIT.md
 config/local.yaml
 config/actual_balances.yaml
-docs/本地待办_DO_NOT_COMMIT.md
 config/opening_balances.yaml
 config/recurring_rules.yaml
 config/opening_init.json
 config/opening_draft.json
+config/backup_secret.txt
+
+# ── PII 门禁专属词表（真实人名/机构/账户别名，永不入库） ──
+# 门禁脚本 scripts/scan-pii.py 读取此文件；占位示例见 config/pii-rules.example.txt
+config/pii-rules.local.txt
+
+# ── 本地私有覆盖配置（*.example.* 入库，*.local.* 不入库） ──
+config/*.local.yaml
+config/*.local.json
+config/*.local.txt
+# deg 规则合成产物（import_rules.py 生成，不入库）
+config/.merged-*.yaml
 
 # ── AI 会话产物与机器证据（仅本地） ──
 .planning/
 docs/evidence/
 收件箱/
-
-# ── 加密备份（含敏感数据，永不入库；恢复流程见 docs/runbooks/03） ──
-backups/
-config/backup_secret.txt
