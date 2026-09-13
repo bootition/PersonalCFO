@@ -1,0 +1,11 @@
+# PersonalCFO 开发/回归依赖
+#
+#   venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+#
+# 这些不是运行软件本身所必需，只有跑自检/回归脚本才需要。
+
+# 端到端 UI 回归（scripts/e2e-sweep.py）——需要 Edge 或 Chrome 已安装
+playwright>=1.40
+
+# 单元测试（tests/）
+pytest>=8.0

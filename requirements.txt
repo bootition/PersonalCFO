@@ -1,0 +1,27 @@
+# PersonalCFO 运行时依赖
+#
+# 安装：
+#   powershell -File scripts/bootstrap.ps1        （一键：建 venv + 装依赖 + 检查二进制）
+# 或手动：
+#   python -m venv venv
+#   venv\Scripts\python.exe -m pip install -r requirements.txt
+#
+# 版本按本项目实测通过的版本给出下限（Windows + Python 3.11~3.14 实测）。
+
+# ── deg 规则配置解析（import_rules.py / gen_recurring.py）──
+PyYAML>=6.0
+
+# ── 账单解析 ──
+openpyxl>=3.1          # 微信 XLSX 预处理（finance.py preprocess_wechat）
+pypdf>=6.0             # 花呗 PDF 文本/页解析（split_huabei.py）
+pdfplumber>=0.11       # 花呗 PDF 表格提取（split_huabei.py）
+
+# ── 账本加密备份（scripts/backup.py）──
+cryptography>=42
+
+# ── Windows 时区数据 ──
+# Windows 无系统 tzdata，deg 解析时间需要它。
+# 本项目已把生成好的 tools/zoneinfo.zip 随仓库分发（Go zoneinfo 不支持 deflate，
+# 故用 ZIP_STORED 打包），因此本项在 Windows 上不是必须的；
+# 但装上它可让 scripts/gen-zoneinfo.py 重新生成时不缺源数据。
+tzdata>=2024.1; platform_system == "Windows"

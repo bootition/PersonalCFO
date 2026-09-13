@@ -1,0 +1,9 @@
+{
+  "_说明": "Wealthfolio 账户名 → hledger 投资科目 映射（占位示例，随仓库分发）",
+  "_用法": "复制本文件为 config/wealthfolio-accounts.local.json，把键换成你自己的 Wealthfolio 账户名；值必须以 Assets:投资: 开头。该本地文件已被 .gitignore 排除。",
+  "<你的账户别名1>": "Assets:投资:基金",
+  "<你的账户别名2>": "Assets:投资:股票",
+  "<你的账户别名3>": "Assets:投资:债券",
+  "<你的账户别名4>": "Assets:投资:虚拟货币",
+  "<你的账户别名5>": "Assets:投资:虚拟物品"
+}
