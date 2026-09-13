@@ -181,8 +181,10 @@ def scan_history(user_rules) -> list[str]:
     tokens = [t for t, _r, _raw in user_rules]
     for c in commits:
         for ti, tok in enumerate(tokens, 1):
-            r = _run(["git", "grep", "-l", "-F", "--", ] if False else
-                     ["git", "grep", "-l", "-F", tok, c, "--"])
+            # -I：跳过二进制文件。
+            # 时区库（tools/zoneinfo.zip）等二进制里可能恰好出现与中文词条相同的
+            # 字节序列，那不是泄漏；不跳二进制会造成假阳性，让门禁失去可信度。
+            r = _run(["git", "grep", "-l", "-I", "-F", tok, c, "--"])
             for f in r.stdout.splitlines():
                 problems.append(f"{c[:8]}:{f.split(':', 1)[-1]}: [LOCAL] <词表#{ti}> 命中（历史）")
     return problems

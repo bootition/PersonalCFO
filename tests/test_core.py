@@ -202,14 +202,16 @@ class TestScanPii:
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
 
-        hits = m.scan_text("本期支出 <金额>", "x.md", [])
+        # 金额用拼接构造：避免字面量被 git filter-repo --replace-text 改写
+        amount = "9" + ",876.54" + " 元"
+        hits = m.scan_text("本期支出 " + amount, "x.md", [])
         assert any(h[0] == "PII-1" for h in hits), "千分位金额应被拦下"
 
-        hits = m.scan_text("身份证 110101199003071234", "x.md", [])
+        hits = m.scan_text("身份证 110101199003071234", "x.md", [])  # pii-ok 假证件号（测试门禁自身）
         assert any(h[0] == "PII-3" for h in hits)
 
-        # 中文路径
-        hits = m.scan_text(r"路径 D:\某用户\某目录\账单", "x.md", [])
+        # 中文路径（假路径，用于验证 PII-7 生效）
+        hits = m.scan_text(r"路径 D:\某用户\某目录\账单", "x.md", [])  # pii-ok 假路径
         assert any(h[0] == "PII-7" for h in hits)
 
     def test_exempt_marker(self):

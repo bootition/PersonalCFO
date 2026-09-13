@@ -50,7 +50,7 @@ powershell -ExecutionPolicy Bypass -File scripts\start.ps1
 正常从 `启动PersonalCFO.bat` 启动会自动设置；如果你是手动起 `paisa.exe`：
 
 ```powershell
-$env:PCFO_ROOT = "D:\你的路径\PersonalCFO"
+$env:PCFO_ROOT = "<你的仓库路径>"
 .\vendor\paisa\paisa.exe serve --config paisa_test\paisa.yaml -p 6500
 ```
 
