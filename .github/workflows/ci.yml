@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONIOENCODING: utf-8          # 防中文输出在 CI 的管道下按 CP936 崩
+  PYTHONUTF8: "1"
+
+jobs:
+  check:
+    name: 语法 / 隐私门禁 / 文档 / 冒烟
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: 语法检查（全部 .py 可编译）
+        run: python -m compileall -q src scripts tests
+
+      - name: 隐私门禁（PII / 密钥 / 真实金额 / 本机路径）
+        run: python scripts/scan-pii.py
+
+      - name: 隐私门禁 · 历史扫描
+        # 提交历史也会被公开；只要有一个提交含敏感词就失败。
+        # 注意：本地专属词表 config/pii-rules.local.txt 不在仓库里，
+        # 因此这一步在 CI 上主要靠通用模式（金额/身份证/卡号/邮箱/绝对路径/密钥）。
+        run: python scripts/scan-pii.py --history
+
+      - name: 文档 front-matter 校验
+        shell: pwsh
+        run: pwsh -File scripts/validate-frontmatter.ps1 -DocsRoot docs -FailOnError
+
+      - name: 单元测试
+        run: python -m pytest tests -q
+
+      - name: 冒烟 · 空仓库路径必须「友好报错」而不是 traceback
+        shell: pwsh
+        run: |
+          # 全新 clone 里没有 journals/ 与 tools/ 二进制，这时正确行为是
+          # 打印可照做的中文提示并以非 0 退出 —— 但不能出现 Python traceback。
+          $ErrorActionPreference = "Continue"
+          $out = python src/finance.py check 2>&1 | Out-String
+          Write-Host $out
+          if ($out -match "Traceback") { throw "check 在空仓库下抛了 traceback" }
+          $out = python src/finance.py status 2>&1 | Out-String
+          Write-Host $out
+          if ($out -match "Traceback") { throw "status 在空仓库下抛了 traceback" }
+          $out = python src/finance.py close 2026 Q1 2>&1 | Out-String
+          Write-Host $out
+          if ($out -match "Traceback") { throw "close 在缺二进制时抛了 traceback" }
+          Write-Host "OK：空仓库路径全部优雅退出"
+
+      - name: 冒烟 · 规则分层合成
+        run: |
+          python src/import_rules.py --check
+          python scripts/gen-zoneinfo.py --check
+
+  release-binary:
+    name: 界面程序（paisa.exe）是否已提供
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 检查 Release 资产
+        run: |
+          echo "paisa.exe 不随仓库分发（体积 50MB+，且受 AGPL-3.0 源码提供义务约束）。"
+          echo "构建与分发流程见 docs/RELEASING.md。"
+          echo "本 job 仅作占位提醒：发布前请确认 Release 里有 paisa.exe 与对应源码。"
